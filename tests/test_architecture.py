@@ -154,6 +154,28 @@ class ArchitectureTests(TempStoreTest):
         self.assertTrue(all(stamp(e["start"]["at"]) <= NOW for e in result["events"]))
         self.assertEqual(result["groups"][0]["id"], "all")
 
+    def test_manual_order_is_saved_with_stable_ids_and_stars_remain_first(self):
+        ids = [e['id'] for e in self.app.scoped_versions('sample-game')[0]['events']]
+        first, second = ids[:2]
+        manual = [second, first, 'temporarily-missing-event']
+        before = self.app.versions()
+        self.workspace.update({'view': {'sort': 'manual', 'manual_order': manual}})
+        order = self.app.state()['event_order']
+        self.assertLess(order.index(second), order.index(first))
+        self.assertEqual(self.workspace.get()['view']['manual_order'], manual)
+        self.app.update_event(first, {'starred': True})
+        order = self.app.state()['event_order']
+        self.assertLess(order.index(first), order.index(second))
+        self.workspace.update({'view': {'sort': 'start'}})
+        self.assertEqual(self.workspace.get()['view']['manual_order'], manual)
+        for invalid in ([first, first], [None], ['']):
+            with self.assertRaises(ValueError):
+                self.workspace.update({'view': {'manual_order': invalid}})
+        self.assertEqual(self.workspace.get()['view']['manual_order'], manual)
+        after = self.app.versions()
+        self.assertEqual([(e['id'], e['start'], e['end']) for v in before for e in v['events']],
+                         [(e['id'], e['start'], e['end']) for v in after for e in v['events']])
+
     def test_density_uses_display_zone_and_excludes_completed_uncertain(self):
         self.workspace.update({"view": {"selected_games": ["sample-game"]}})
         versions = self.app.scoped_versions("sample-game")

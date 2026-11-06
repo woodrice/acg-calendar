@@ -1,0 +1,41 @@
+:root{--feedback-time:180ms;--feedback-ease:cubic-bezier(.2,.7,.2,1)}
+html[data-motion=reduced]{--feedback-time:120ms}
+html[data-motion=off]{--feedback-time:0ms}
+.event-row-tools{position:absolute;right:4px;top:5px;z-index:7;display:flex;flex-direction:column;gap:2px}
+.event-row-tools>button{width:27px;height:26px;padding:0;border:1px solid transparent;background:var(--paper);color:var(--ink);border-radius:var(--control-radius);font:inherit}
+.event-row-tools>button:hover{border-color:var(--line)}
+.event-row-tools>button[aria-pressed=true]{background:var(--green);color:var(--accent-ink)}
+.event-row-tools>.event-order-handle{display:none;touch-action:none;cursor:grab}
+.event-name-cell>.event-name .event-name-text{padding-right:30px}
+.timeline-row[data-row-event]{position:relative}
+.timeline-row.order-lifted,.timeline-row.motion-pin{z-index:3;box-shadow:0 6px 16px #0003;background:var(--paper)}
+.ordering-timeline,.ordering-timeline .order-lifted :is(.event-bar,.point-marker,.event-order-handle){cursor:grabbing;user-select:none}
+html[data-motion=standard] .ordering-timeline [data-order-root]:not(.order-lifted){transition:translate 150ms var(--feedback-ease)}
+.order-insert-before{box-shadow:inset 0 2px var(--green)}
+.order-insert-after{box-shadow:inset 0 -2px var(--green)}
+.motion-phantom{position:fixed;overflow:hidden;pointer-events:none;z-index:2}
+.motion-located{outline:2px solid var(--link,var(--green));outline-offset:-2px}
+.toast-action{margin-left:9px;padding:2px 5px;background:transparent;color:inherit;border:1px solid currentColor;text-decoration:underline;font:inherit}
+.notice>.notice-locate{grid-column:2;justify-self:start}
+.sync-stage-strip{display:flex;flex-wrap:wrap;gap:6px 14px;list-style:none;padding:0;margin:0;font-size:.78rem;color:var(--muted)}
+.sync-stage-strip li{display:flex;align-items:center;gap:5px}
+.sync-stage-strip [data-state=current],.sync-stage-strip [data-state=waiting],.sync-stage-strip [data-state=done]{color:var(--ink)}
+.sync-stage-strip [aria-current=step] span{background:var(--green);color:var(--accent-ink);padding:0 3px}
+.source-status .sync-stage-strip{flex-basis:100%}
+.source-status:has(.sync-stage-strip){flex-wrap:wrap}
+.ux-workspace #source-status:has(.sync-stage-strip){max-height:none;white-space:normal;overflow:visible}
+.motion-setting{margin:10px 0;max-width:320px}
+.plan-selection-overlay{transition:background-color var(--feedback-time) var(--feedback-ease)}
+html[data-motion=standard] .plan-creating .plan-create-row{animation:plan-mode-enter var(--feedback-time) var(--feedback-ease)}
+@keyframes plan-mode-enter{from{opacity:.4;translate:0 4px}to{opacity:1;translate:0 0}}
+@supports (transition-behavior:allow-discrete){
+  dialog:not(#detail-dialog){opacity:0;translate:0 6px;transition:opacity var(--feedback-time) var(--feedback-ease),translate var(--feedback-time) var(--feedback-ease),display var(--feedback-time) allow-discrete,overlay var(--feedback-time) allow-discrete}
+  dialog[open]:not(#detail-dialog){opacity:1;translate:0 0}
+  @starting-style{dialog[open]:not(#detail-dialog){opacity:0;translate:0 6px}}
+  html[data-motion=reduced] dialog:not(#detail-dialog){translate:none}
+}
+#detail-dialog,#detail-dialog::backdrop{animation:none!important;transition:none!important}
+html[data-motion=off] dialog,html[data-motion=off] .plan-create-row{transition:none!important;animation:none!important}
+html[data-motion=reduced] *,html[data-motion=off] *{scroll-behavior:auto!important}
+html[data-motion=reduced] .syncing .sync-icon,html[data-motion=off] .syncing .sync-icon{animation:none!important}
+@media(pointer:coarse){.event-row-tools{position:static;flex-direction:row;flex-wrap:wrap;padding:0 4px 4px}.event-row-tools>button{width:44px;height:44px}.event-row-tools>.event-order-handle{display:inline-block}.event-name-cell>.event-name .event-name-text{padding-right:0}}

@@ -98,6 +98,7 @@ public sealed partial class CalendarWindow
         var lines = games.Where(g => InScope(g.Id) && all.TryGetProperty(g.Id, out _)).Select(g => (g, text: SyncProgressText(all.GetProperty(g.Id)))).Where(x => x.text != "")
             .Select(x => (selectedGame is "all" or "selected" ? x.g.Short_Name + "：" : "") + x.text).ToArray();
         syncProgress.Text = lines.Length > 0 ? string.Join("\n", lines) : "还没有本轮同步记录。";
+        AnimateSyncFeedback(all);
         UpdateQuickSync(all);
     }
 

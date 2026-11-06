@@ -2,6 +2,8 @@
 (() => {
   const W = window.PlaytimeWorkspace;
   const P = window.PlaytimePlanner;
+  const M = window.PlaytimeMotion;
+  const R = window.PlaytimeOrder;
   const combined = () => ['all','selected'].includes(S.game);
   const $ = selector => document.querySelector(selector);
   const DAY = 86400000;
@@ -82,7 +84,7 @@
   }
   document.addEventListener('focusin',event=>{
     const field=event.target.closest?.('dialog input,dialog textarea,dialog select');
-    if(field&&narrow.matches)setTimeout(()=>field.scrollIntoView({block:'center',behavior:'smooth'}),250);
+    if(field&&narrow.matches)setTimeout(()=>field.scrollIntoView({block:'center',behavior:M.mode==='standard'?'smooth':'auto'}),250);
   });
   const local={
     get(key,fallback){try{const v=JSON.parse(localStorage.getItem('playtime.'+key));return v??fallback;}catch{return fallback;}},
@@ -131,11 +133,16 @@
   }
   // Replace a region only when its markup changed; when it must be rebuilt, focus returns to
   // the control for the same activity or plan instead of falling back to <body>.
-  function patch(el,html) {
+  function patch(el,html,motionContext=null) {
     if(el._html===html&&el.firstChild===el._first)return false;
+    const before=motionContext===null?null:M.capture(el,motionContext);
+    const oldScroll=motionContext===null?null:(el.querySelector('.timeline-scroll')||el);
+    const scroll=oldScroll?[oldScroll.scrollLeft,oldScroll.scrollTop]:null;
     const active=document.activeElement,key=el.contains(active)&&active!==el?focusKey(active):null;
     el.innerHTML=html;el._html=html;el._first=el.firstChild;
+    if(scroll){const newScroll=el.querySelector('.timeline-scroll')||el;[newScroll.scrollLeft,newScroll.scrollTop]=scroll;}
     if(key){const same=el.querySelector(key);if(same)same.focus({preventScroll:true});}
+    if(motionContext!==null)M.layout(el,before);
     return true;
   }
   function focusKey(node) {
@@ -220,7 +227,7 @@
   // What the current view selects and what it really draws, each by activity id once.
   // folded: children collapsed under a parent; overflow: month bars beyond three lanes.
   function viewProjection(filtered,shown,lo,hi) {
-    const tree=list=>{const drawn=P.arrange(list);return {inView:list,visible:drawn,folded:list.length-drawn.length,overflow:0};};
+    const tree=list=>{const drawn=S.view==='timeline'?timelineRows(list):P.arrange(list);return {inView:list,visible:drawn,folded:list.length-drawn.length,overflow:0};};
     if(S.view==='timeline')return tree(shown);
     if(S.view==='list')return tree(filtered);
     if(S.view==='upcoming'){const {byId,nodes,uncertain}=upcomingRows(filtered),ids=new Set([...nodes.map(n=>n.event_id),...uncertain.map(e=>e.id)]);const drawn=[...ids].map(id=>byId.get(id));return {inView:drawn,visible:drawn,folded:0,overflow:0};}
@@ -250,7 +257,18 @@
     const outside={timeline:'日期范围外',month:'本月无明确截止（或已完成）',upcoming:'近期截止只列未来截止，其余'}[S.view];
     patch(el,`${[...otherVersions].map(([id,n])=>`<strong>「${esc(versionName(id))}」有 ${n} 条上次同步新增的活动</strong><button type="button" class="text-button" data-unhide="version" data-version="${esc(id)}">查看该版本</button>`).join('')}${newHidden?`<strong>上次同步新增的 ${newHidden} 条活动未显示：${newlyHidden.slice(0,3).map(e=>esc(cleanTitle(e))).join('、')}${newHidden>3?'…':''}</strong>`:''}<span>${S.view==='month'?'截止总览已计入':'当前显示'} ${visible.length} / 本范围 ${scope.length} 项${hidden?`，筛选隐藏 ${hidden} 项`:''}${counts.length>1?'（各原因可能重叠）':''}：</span>${counts.map(([id,label,n])=>`<button type="button" class="text-button" data-unhide="${id}">${label} ${n} · 显示</button>`).join('')}${focus?`<button type="button" class="text-button" data-unhide="focus">日期聚焦 ${focus} · 取消聚焦</button>`:''}${range&&outside?`<button type="button" class="text-button" data-unhide="range">${outside} ${range} · 在全部活动中查看</button>`:''}${overflow>0?`<button type="button" class="text-button" data-unhide="range">月历每格最多 3 条，另有 ${overflow} 项收在“+N 项”中 · 在全部活动中查看</button>`:''}${folded>0?`<span>另有 ${folded} 条子活动已折叠</span>`:''}`);
   }
-  function filteredEvents() {return P.filterFocus(baseFilteredEvents());}
+  function filteredEvents() {
+    const filtered=P.filterFocus(baseFilteredEvents());
+    if(S.view==='timeline'&&S.located&&!filtered.some(e=>e.id===S.located)){
+      const located=scopeEvents().find(e=>e.id===S.located&&!e.ignored);if(located)filtered.push(located);
+    }
+    return filtered;
+  }
+  function timelineRows(events){
+    const arranged=P.arrange(events),located=events.find(e=>e.id===S.located);
+    if(located&&!arranged.some(e=>e.id===located.id))arranged.push(located);
+    return arranged;
+  }
   function range() {
     if(S.view==='timeline') return [S.anchor,S.anchor+S.days];
     const d=serialDate(S.anchor), first=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1)/DAY;
@@ -277,10 +295,15 @@
       return result;
     }finally{if(write){S.writes++;S.activeWrites--;}}
   }
-  function toast(message,error=false) {
+  function toast(message,error=false,action=null) {
     const el=$('#toast');
     el.textContent=message;el.classList.toggle('error',error);el.hidden=false;
-    clearTimeout(S.toastTimer);S.toastTimer=setTimeout(()=>{el.hidden=true;},4500);
+    if(action){
+      const button=document.createElement('button');button.type='button';button.className='toast-action';button.textContent=action.label;
+      button.addEventListener('click',async()=>{if(button.disabled)return;button.disabled=true;try{await action.run();}finally{if(button.isConnected)button.disabled=false;}});el.append(button);
+    }
+    const hide=()=>{if(el.contains(document.activeElement)){S.toastTimer=setTimeout(hide,1000);return;}el.hidden=true;};
+    clearTimeout(S.toastTimer);S.toastTimer=setTimeout(hide,action?8500:4500);
   }
   async function mutate(path,body={},method='POST') {
     const generation=S.scopeGeneration;
@@ -288,8 +311,33 @@
     try { const data=await api(path,method,body); if(generation===S.scopeGeneration)applyState(data); return true; }
     catch(error) { toast(error.message,true);return false; }
   }
+  async function saveManualOrder(before,after){
+    const prior={sort:W.view.sort,manual_order:[...W.view.manual_order]},peers=new Set(before);
+    const base=new Set([...(prior.sort==='manual'?prior.manual_order:[]),...S.data.event_order,...prior.manual_order]);
+    if(before.some(id=>!base.has(id))){toast('活动范围已变化，请重新拖动',true);return;}
+    let i=0;const order=[...base].map(id=>peers.has(id)?after[i++]:id);
+    if(await mutate('/api/workspace',{view:{sort:'manual',manual_order:order}},'PATCH')){
+      toast(prior.sort==='manual'?'已保存活动顺序':'已切换到手动排序',false,{label:'撤销排序',run:async()=>{
+        if(W.view.sort!=='manual'||JSON.stringify(W.view.manual_order)!==JSON.stringify(order)){toast('顺序已再次修改，未覆盖当前排序',true);return;}
+        if(await mutate('/api/workspace',{view:prior},'PATCH'))toast('已恢复原顺序');
+      }});
+    }
+  }
+  async function setCompleted(event,value){
+    if(!await mutate('/api/events/'+event.id,{completed:value},'PATCH'))return false;
+    toast(value?'已标记完成':'已撤销完成',false,value?{label:'撤销完成',run:async()=>{
+      const current=allEvents().find(e=>e.id===event.id);if(!current?.completed)return;
+      const focused=$('#toast').contains(document.activeElement);
+      if(await setCompleted(current,false)){
+        if($('#detail-dialog').open&&S.selected===event.id)renderDetail(allEvents().find(e=>e.id===event.id));
+        else if(focused&&(document.activeElement===document.body||$('#toast').contains(document.activeElement)))document.querySelector(`[data-event-complete="${CSS.escape(event.id)}"]`)?.focus({preventScroll:true});
+      }
+    }}:null);
+    return true;
+  }
   async function selectScope(game,selected_games,reset=false) {
     if(S.scoping)return;
+    S.located=null;
     S.dateIntent=(S.dateIntent||0)+1;
     S.scopeGeneration=(S.scopeGeneration||0)+1;S.scoping=true;
     const controls=[$('#game-select'),...document.querySelectorAll('[data-select-game]')];controls.forEach(c=>c.disabled=true);
@@ -305,7 +353,7 @@
   function applyState(data) {
     if(S.scoping)return;
     const first=!S.initialized;
-    S.data=data;S.localZone=null;S.stateTag=null;W.accept(data);
+    S.data=data;S.localZone=null;S.stateTag=null;M.configure(data.settings.ui_motion);W.accept(data);
     const scopeSignature=JSON.stringify([W.view.scope,W.selected()]);
     if(S.scopeSignature&&S.scopeSignature!==scopeSignature)S.game=W.view.scope==='single'?W.selected()[0]:W.view.scope;
     S.scopeSignature=scopeSignature;
@@ -392,7 +440,7 @@
     $('#sync-button').lastChild.textContent=sync.running?'同步中…':'同步资料';
     $('#sync-status').textContent=combined()?'各来源独立同步 · 数据保存在本机':sync.last_success?`最近同步 ${format(sync.last_success,{year:true})} · 数据保存在本机`:`${version.source.label||gameInfo().source_label}快照 ${format(version.source.fetched_at,{year:true})} · 数据保存在本机`;
     document.body.dataset.calendarView=S.view;
-    W.renderModules();P.update();window.PlaytimeUX?.update(S.data);renderClock();syncTime();
+    W.renderModules();if(S.view==='timeline')M.enterTimeline($('#calendar'));P.update();window.PlaytimeUX?.update(S.data);renderClock();syncTime();
   }
   W.register('sources',()=>renderSourceStatus(activeVersion()));
   W.register('rewards',()=>renderRewardSummary(activeVersion()));
@@ -400,14 +448,13 @@
   W.register('personal-plans',()=>P.plansModule());
   W.register('calendar',()=>{
     if(P.holding)return; // Keep pointer capture and the selection overlay during local polling.
+    if(R.holding){if(R.matches())return;R.cancel();}
     const [lo,hi]=range(), filtered=filteredEvents(), shown=['list','upcoming'].includes(S.view)?filtered:filtered.filter(e=>overlaps(e,lo,hi));
-    const oldScroll=$('#calendar .timeline-scroll')||$('#calendar');
-    const position=[oldScroll.scrollLeft,oldScroll.scrollTop];
-    if(patch($('#calendar'),S.view==='timeline'?renderTimeline(shown,lo,hi):S.view==='list'?renderList(filtered):S.view==='upcoming'?renderUpcoming(filtered):renderMonth(filtered,lo,hi))){
-      const newScroll=$('#calendar .timeline-scroll')||$('#calendar');
-      [newScroll.scrollLeft,newScroll.scrollTop]=position;
-    }
+    patch($('#calendar'),S.view==='timeline'?renderTimeline(shown,lo,hi):S.view==='list'?renderList(filtered):S.view==='upcoming'?renderUpcoming(filtered):renderMonth(filtered,lo,hi),JSON.stringify([S.view,lo,hi]));
     renderHiddenSummary(filtered,viewProjection(filtered,shown,lo,hi));
+    const located=S.located&&allEvents().find(e=>e.id===S.located),context=$('#location-context');
+    context.hidden=!located||S.view!=='timeline';
+    if(!context.hidden)patch(context,`<span>临时定位 · ${esc(cleanTitle(located))}</span><button type="button" class="text-button" id="clear-location">结束定位 ×</button>`);
     const unscheduled=filtered.filter(e=>!e.start.at||e.invalid_interval);
     $('#unscheduled').hidden=!unscheduled.length;
     patch($('#unscheduled'),unscheduled.length?`<h3>时间待核对 · ${unscheduled.length} 项</h3>${unscheduled.map(e=>`<button type="button" data-event="${e.id}">${esc(cleanTitle(e))}</button>`).join('')}`:'');
@@ -468,15 +515,17 @@
     const left=(a-lo)/span*100,width=(b-a)/span*100;
     const cat=categories[event.category];
     const tooltip=`${cleanTitle(event)} · ${format(event.start.at,{year:true})} → ${event.end.at?format(event.end.at,{year:true}):referenceLabels[event.end.reference]||'截止待定'} · ${status(event)}`;
-    if(isPoint&&!month) return `<button type="button" class="point-marker" style="--category:${cat.color};--bar-left:${left}%" data-event="${event.id}" aria-label="${esc(tooltip)}" title="${esc(tooltip)}"></button>`;
+    const sortable=!month&&!event._tree_depth,shortcuts=sortable?' aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"':'';
+    const hoverTitle=esc(sortable?tooltip+'\n长按上下拖动排序':tooltip);
+    if(isPoint&&!month) return `<button type="button" class="point-marker" style="--category:${cat.color};--bar-left:${left}%" data-event="${event.id}"${shortcuts} aria-label="${esc(tooltip)}" title="${hoverTitle}"></button>`;
     const label=month?(combined()?gameLabel(event)+' · ':'')+cleanTitle(event):(start<lo?'← ':'')+format(event.start.at,{dateOnly:true})+(event.start.state==='estimated'?' 预计':'')+(event.end.at?' → '+format(event.end.at,{dateOnly:true}):' → 待定')+(end>hi?' →':'');
     const image=month?'':artwork(event,'bar-art');
-    return `<button type="button" class="event-bar ${image?'has-art':''} ${!event.end.at&&!isPoint?'open-end':''} ${event.start.state==='estimated'?'estimated-start':''} ${end>hi?'clipped-end':''} ${event.completed?'completed':''}" style="--category:${cat.color};--event-accent:${accent(event)};--bar-left:${left}%;--bar-width:${width}%;--bar-top:${top}px" data-progress="${a},${b}" data-event="${event.id}" aria-label="${esc(tooltip)}" title="${esc(tooltip)}">${image}<span class="bar-label">${esc(label)}</span></button>`;
+    return `<button type="button" class="event-bar ${image?'has-art':''} ${!event.end.at&&!isPoint?'open-end':''} ${event.start.state==='estimated'?'estimated-start':''} ${end>hi?'clipped-end':''} ${event.completed?'completed':''}" style="--category:${cat.color};--event-accent:${accent(event)};--bar-left:${left}%;--bar-width:${width}%;--bar-top:${top}px" data-progress="${a},${b}" data-event="${event.id}"${shortcuts} aria-label="${esc(tooltip)}" title="${hoverTitle}">${image}<span class="bar-label">${esc(label)}</span></button>`;
   }
   function renderTimeline(events,lo,hi) {
     const plans=P.planBars(lo,hi);
     if(!events.length&&!plans&&!P.creating) return emptyCalendar();
-    events=P.arrange(events);
+    events=timelineRows(events);
     const today=Math.floor(civil(now())), days=hi-lo;
     const axis=Array.from({length:days},(_,i)=>{
       const serial=lo+i,d=serialDate(serial),week=d.getUTCDay();
@@ -491,7 +540,7 @@
       return `<div class="timeline-group" style="--category:${definition.color}"><span class="category-dot"></span>${definition.name}<span class="group-count">${String(group.length).padStart(2,'0')}</span></div>`+group.map(event=>{
         const markers=event.phases.filter(p=>p.at&&civil(p.at)>=lo&&civil(p.at)<hi).map(p=>`<button type="button" class="phase-mark" style="left:${(civil(p.at)-lo)/days*100}%" data-event="${event.id}" aria-label="${esc(event.title+' · '+p.title+' '+format(p.at,{year:true}))}" title="${esc(p.title+' '+format(p.at))}"></button>`).join('');
         const deadline=event.time_kind==='point'?`<strong>${esc(format(event.start.at))}</strong><span>更新节点</span>`:event.end.at?`<strong>${esc(format(event.end.at))}</strong><span>${event.end.state==='estimated'?'预计结束':countdownSlot(event.end.at)}</span>`:`<strong class="pending-label">截止待定</strong><span>${event.end.reference==='recruitment_cycles'?'按寻访次数结束':'等待后续公告'}</span>`;
-        return `<div data-game="${event.game}" class="timeline-row ${event.completed?'completed':''}" style="--tree-depth:${event._tree_depth||0};--event-accent:${accent(event)};--game-color:${esc(W.game(event.game)?.color||'#6D8658')}"><div class="event-name-cell"><button type="button" class="event-name" data-event="${event.id}" style="--category:${definition.color}"><span class="event-avatar" title="点击图标只看${esc(gameLabel(event))}">${gameIcon(event.game)}</span><span class="event-name-text"><strong>${event.starred?'★ ':''}${esc(cleanTitle(event))}</strong><small><span class="game-label">${esc(gameLabel(event))}</span> · ${esc(event.subtype)} · ${esc(status(event))}</small></span></button>${P.familyControls(event)}</div><div class="bar-cell"><span class="today-column" style="--today-left:${(today-lo)/days*100}%" ${today<lo||today>=hi?'hidden':''}></span><span class="now-line" data-now-line="${lo},${days}" ${today<lo||today>=hi?'hidden':''}></span>${bar(event,lo,hi)}${markers}</div><button type="button" class="deadline-cell" data-event="${event.id}">${deadline}</button>${W.game(event.game)?.currency?`<button type="button" class="reward-cell" data-event="${event.id}" aria-label="${esc(cleanTitle(event))}的嵌晶玉奖励">${rewardBadge(event)}</button>`:'<span class="reward-cell reward-none" aria-hidden="true"></span>'}</div>`;
+        return `<div data-row-event="${event.id}" data-order-root="${esc((event._group_event||event).id)}" data-order-group="${esc(category)}" data-game="${event.game}" class="timeline-row ${event.completed?'completed':''}" style="--tree-depth:${event._tree_depth||0};--event-accent:${accent(event)};--game-color:${esc(W.game(event.game)?.color||'#6D8658')}"><div class="event-name-cell"><button type="button" class="event-name" data-event="${event.id}" style="--category:${definition.color}"><span class="event-avatar" title="点击图标只看${esc(gameLabel(event))}">${gameIcon(event.game)}</span><span class="event-name-text"><strong>${event.starred?'★ ':''}${esc(cleanTitle(event))}</strong><small><span class="game-label">${esc(gameLabel(event))}</span> · ${esc(event.subtype)} · ${esc(status(event))}</small></span></button><div class="event-row-tools"><button type="button" class="event-star" data-event-star="${event.id}" aria-pressed="${event.starred}" aria-label="${event.starred?'取消收藏':'收藏'}：${esc(cleanTitle(event))}" title="${event.starred?'取消收藏':'收藏活动'}">${event.starred?'★':'☆'}</button><button type="button" class="event-done" data-event-complete="${event.id}" aria-pressed="${event.completed}" aria-label="${event.completed?'撤销完成':'标记完成'}：${esc(cleanTitle(event))}" title="${event.completed?'撤销完成':'标记完成'}">${event.completed?'↶':'✓'}</button>${!event._tree_depth?`<button type="button" class="event-order-handle" data-order-handle="${event.id}" aria-label="拖动排序：${esc(cleanTitle(event))}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title="长按拖动排序">⋮⋮</button>`:''}</div>${P.familyControls(event)}</div><div class="bar-cell"><span class="today-column" style="--today-left:${(today-lo)/days*100}%" ${today<lo||today>=hi?'hidden':''}></span><span class="now-line" data-now-line="${lo},${days}" ${today<lo||today>=hi?'hidden':''}></span>${bar(event,lo,hi)}${markers}</div><button type="button" class="deadline-cell" data-event="${event.id}">${deadline}</button>${W.game(event.game)?.currency?`<button type="button" class="reward-cell" data-event="${event.id}" aria-label="${esc(cleanTitle(event))}的嵌晶玉奖励">${rewardBadge(event)}</button>`:'<span class="reward-cell reward-none" aria-hidden="true"></span>'}</div>`;
       }).join('');
     }).join('');
     return `<div class="timeline-scroll"><div class="timeline ${S.game==='arknights-cn'?'arknights-timeline':''} ${S.fit?'fit-version':''}" style="--days:${days};min-width:${S.fit?Math.max(1000,456+days*10):Math.max(840,296+days*28)}px"><div class="timeline-head"><div class="timeline-label">活动 / 开放状态 · 标题完整显示</div><div class="day-axis">${axis}</div><div class="timeline-deadline-head">截止 / 更新时刻<span>${esc(zone())}</span></div><div class="timeline-reward-head">嵌晶玉<span>${combined()?'仅终末地':'活动总量'}</span></div></div>${P.creationRow()}${plans}${rows}</div></div>`;
@@ -543,6 +592,7 @@
   }
   function openDialog(selector) {
     const dialog=$(selector);
+    M.opened(dialog);
     if(['#detail-dialog','#agenda-dialog','#reward-dialog','#rules-dialog'].includes(selector))addOfficialTimeNotice(dialog);
     if(!dialog.open) dialog.showModal();
   }
@@ -562,6 +612,21 @@
     if($('#agenda-dialog').open) $('#agenda-dialog').close();
     renderDetail(event);openDialog('#detail-dialog');
   }
+  async function locateEvent(id){
+    const event=allEvents().find(e=>e.id===id);
+    if(!event){toast('活动已不在当前日历缓存中',true);return;}
+    if(P.creating)P.stopCreating();
+    for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
+    if(!event.start.at||event.invalid_interval||event.ignored){openEvent(id);return;}
+    if(S.game!=='all'&&(S.game==='selected'?!W.selected().includes(event.game):S.game!==event.game))await selectScope(event.game,[event.game]);
+    if(!combined()&&S.game===event.game)S.version=event.version_id;
+    if(!scopeEvents().some(e=>e.id===id)){toast('无法切换到该活动的游戏范围',true);return;}
+    if(S.view!=='timeline'){S.view='timeline';S.fit=false;S.days=Number($('#range-select').value);}
+    if(!overlaps(event,...range())){S.dateIntent=(S.dateIntent||0)+1;S.fit=false;S.days=Number($('#range-select').value);S.explicitAnchor=S.anchor=Math.floor(civil(event.start.at));}
+    S.located=id;render();
+    const row=$(`#calendar [data-row-event="${CSS.escape(id)}"]`);
+    if(row?.checkVisibility())M.locate(row);else{openEvent(id);toast('日历模块未展开，已打开活动详情');}
+  }
   function endpointDetail(endpoint,role,event) {
     if(role==='end'&&event.time_kind==='point') return '<div class="detail-time-value">更新节点</div><div class="detail-time-state">公告未设活动截止时间</div>';
     const value=endpoint.at?format(endpoint.at,{year:true}):'尚未公布';
@@ -569,6 +634,7 @@
     return `<div class="detail-time-value">${esc(value)}</div><div class="detail-time-state">${esc(basis)}</div>`;
   }
   function renderDetail(event) {
+    const detailFocus=$('#detail-content').contains(document.activeElement)?document.activeElement.id:null;
     const cat=categories[event.category], isMaintenance=event.category==='maintenance', serverZone=W.game(event.game)?.timezone||'UTC';
     const upcoming=event.start.at&&Date.parse(event.start.at)>now();
     const target=upcoming?event.start.at:event.end.at;
@@ -626,6 +692,7 @@
       $('#detail-content .source-link').after(panel);
     }
     addOfficialTimeNotice($('#detail-dialog'));P.detail(event);window.PlaytimeUX?.detail(event);
+    if(detailFocus)$('#'+CSS.escape(detailFocus))?.focus({preventScroll:true});
   }
   function openAgenda(day) {
     const events=filteredEvents().filter(e=>overlaps(e,day,day+1)).sort((a,b)=>Date.parse(a.start.at)-Date.parse(b.start.at));
@@ -666,7 +733,7 @@
     $('#reminder-settings').innerHTML=`<label class="setting-row"><span><strong>开启截止提醒</strong><p>只为截止时间已明确、尚未完成的活动生成提醒。</p></span><input id="reminders-enabled" type="checkbox" ${settings.reminders_enabled?'checked':''}></label><div class="offset-choices" role="group" aria-label="提前多久提醒">${[[4320,'提前 3 天'],[1440,'提前 24 小时'],[60,'提前 1 小时']].map(([n,label])=>`<label><input type="checkbox" data-offset="${n}" ${settings.reminder_offsets.includes(n)?'checked':''}>${label}</label>`).join('')}</div>${reminderScopeFields()}<label class="setting-row"><span><strong>系统桌面提醒</strong><p>${S.data.native_available?'本地程序保持运行时，关闭网页后仍可交给系统通知。':'此环境暂不支持本机通知，可使用应用内或浏览器提醒。'}</p></span><input id="native-notifications" type="checkbox" ${settings.native_notifications?'checked':''} ${S.data.native_available?'':'disabled'}></label><p class="help-text">电脑关机、休眠或本地程序停止时暂停检查。重新运行后补查提醒窗口；同一活动、截止时间和提前量只提醒一次。浏览器提醒需要网页保持打开。</p><div class="settings-actions"><button id="test-reminder" class="button button-primary" type="button">发送测试提醒</button><button id="browser-notifications" class="button" type="button">${browserEnabled()?'关闭浏览器提醒':'开启浏览器提醒'}</button></div><p id="delivery-result" class="help-text"></p>`;
   }
   function renderInbox() {
-    $('#notification-list').innerHTML=S.data.notifications.length?S.data.notifications.map(notice=>`<div class="notice ${notice.read?'read':''}"><span class="notice-dot"></span><${notice.event_id?'button type="button" data-event="'+esc(notice.event_id)+'"':'div'}><strong>${notice.game_name?esc(notice.game_name)+' · ':''}${esc(notice.title)}</strong><p>${esc(notice.message)}${notice.end_at?' · 截止 '+esc(format(notice.end_at,{year:true})):''}</p><small>${esc(format(notice.created_at,{year:true}))}</small></${notice.event_id?'button':'div'}></div>`).join(''):'<div class="empty-state">还没有提醒。可以发送一条测试提醒。</div>';
+    $('#notification-list').innerHTML=S.data.notifications.length?S.data.notifications.map(notice=>`<div class="notice ${notice.read?'read':''}"><span class="notice-dot"></span><${notice.event_id?'button type="button" data-event="'+esc(notice.event_id)+'"':'div'}><strong>${notice.game_name?esc(notice.game_name)+' · ':''}${esc(notice.title)}</strong><p>${esc(notice.message)}${notice.end_at?' · 截止 '+esc(format(notice.end_at,{year:true})):''}</p><small>${esc(format(notice.created_at,{year:true}))}</small></${notice.event_id?'button':'div'}>${notice.event_id?`<button type="button" class="text-button notice-locate" data-locate-event="${esc(notice.event_id)}">在时间轴定位 ↗</button>`:''}</div>`).join(''):'<div class="empty-state">还没有提醒。可以发送一条测试提醒。</div>';
     const delivery=S.data.desktop_delivery;
     if($('#delivery-result')) $('#delivery-result').textContent=delivery?`${format(delivery.at)} · ${delivery.message}`:'';
   }
@@ -703,6 +770,7 @@
   }
   async function switchView(view) {
     if(S.view===view) return;
+    S.located=null;
     S.dateIntent=(S.dateIntent||0)+1;
     if(view==='month')S.anchor=W.view.focus.date?Date.parse(W.view.focus.date)/DAY:S.explicitAnchor??Math.floor(civil(now()));
     S.view=view;S.fit=false;S.days=Number($('#range-select').value);
@@ -735,6 +803,7 @@
     S.fit=true;S.anchor=lo;S.days=Math.max(7,hi-lo);render();
   }
   function movePeriod(direction) {
+    S.located=null;
     S.dateIntent=(S.dateIntent||0)+1;
     if(S.fit) {S.fit=false;S.days=Number($('#range-select').value);}
     if(S.view==='timeline') S.anchor+=direction*S.days;
@@ -746,6 +815,7 @@
     const target=event.target.closest('button');
     if(!target) return;
     if(target.hasAttribute('data-close')) { target.closest('dialog').close();return; }
+    if(target.dataset.locateEvent&&S.data){await locateEvent(target.dataset.locateEvent);return;}
     if(target.dataset.event) {
       if($('#reminder-dialog').open) $('#reminder-dialog').close();
       if($('#reward-dialog').open) $('#reward-dialog').close();
@@ -771,6 +841,26 @@
       return;
     }
     if(!S.data) return;
+    if(target.dataset.eventComplete){
+      const e=allEvents().find(e=>e.id===target.dataset.eventComplete);if(!e||target.disabled)return;
+      const wasFocused=document.activeElement===target;target.disabled=true;
+      const ok=await setCompleted(e,!e.completed);
+      if(target.isConnected)target.disabled=false;
+      if(wasFocused&&(document.activeElement===document.body||document.activeElement===target)&&!document.querySelector('dialog[open]')){
+        (document.querySelector(`[data-event-complete="${CSS.escape(e.id)}"]`)||(ok?$('#toast .toast-action'):null))?.focus({preventScroll:true});
+      }
+      return;
+    }
+    if(target.dataset.orderHandle){toast('长按后上下拖动；键盘可用 Alt + ↑ / ↓');return;}
+    if(target.dataset.eventStar){
+      if(target.disabled)return;
+      const e=allEvents().find(e=>e.id===target.dataset.eventStar);if(!e)return;
+      const wasFocused=document.activeElement===target;target.disabled=true;
+      if(await mutate('/api/events/'+e.id,{starred:!e.starred},'PATCH'))toast(e.starred?'已取消收藏':'已收藏');
+      if(target.isConnected)target.disabled=false;
+      if(wasFocused&&(document.activeElement===document.body||document.activeElement===target)&&!document.querySelector('dialog[open]'))document.querySelector(`[data-event-star="${CSS.escape(e.id)}"]`)?.focus({preventScroll:true});
+      return;
+    }
     switch(target.id) {
       case 'open-plugin-directory': {
         target.disabled=true;
@@ -785,7 +875,8 @@
       case 'reward-details':openRewardDetails();break;
       case 'previous-period':movePeriod(-1);break;
       case 'next-period':movePeriod(1);break;
-      case 'today-button':S.dateIntent=(S.dateIntent||0)+1;S.fit=false;S.days=Number($('#range-select').value);S.explicitAnchor=S.anchor=Math.floor(civil(now()));render();break;
+      case 'today-button':S.located=null;S.dateIntent=(S.dateIntent||0)+1;S.fit=false;S.days=Number($('#range-select').value);S.explicitAnchor=S.anchor=Math.floor(civil(now()));render();break;
+      case 'clear-location':S.located=null;render();$('#timeline-view').focus({preventScroll:true});break;
       case 'upcoming-view':await switchView('upcoming');break;
       case 'sidebar-more':paintSidebar(!$('.sidebar').classList.contains('sidebar-expanded'));break;
       case 'heading-toggle':local.set('heading.v1',headingCompact()?'full':'compact');paintHeading();W.renderModules();break;
@@ -812,13 +903,19 @@
         break;
       }
       case 'toggle-starred': {
+        if(target.disabled)break;const wasFocused=document.activeElement===target;target.disabled=true;
         const e=allEvents().find(e=>e.id===S.selected);
-        if(await mutate('/api/events/'+e.id,{starred:!e.starred},'PATCH')) renderDetail(allEvents().find(item=>item.id===e.id));
+        if(await mutate('/api/events/'+e.id,{starred:!e.starred},'PATCH')&&S.selected===e.id&&$('#detail-dialog').open) renderDetail(allEvents().find(item=>item.id===e.id));
+        if(target.isConnected)target.disabled=false;
+        if(wasFocused&&S.selected===e.id&&$('#detail-dialog').open&&(document.activeElement===document.body||document.activeElement===target))$('#toggle-starred').focus({preventScroll:true});
         break;
       }
       case 'toggle-completed': {
+        if(target.disabled)break;const wasFocused=document.activeElement===target;target.disabled=true;
         const e=allEvents().find(e=>e.id===S.selected);
-        if(await mutate('/api/events/'+e.id,{completed:!e.completed},'PATCH')) renderDetail(allEvents().find(item=>item.id===e.id));
+        if(await setCompleted(e,!e.completed)&&S.selected===e.id&&$('#detail-dialog').open){renderDetail(allEvents().find(item=>item.id===e.id));M.feedback($('#toggle-completed'));}
+        if(target.isConnected)target.disabled=false;
+        if(wasFocused&&S.selected===e.id&&$('#detail-dialog').open&&(document.activeElement===document.body||document.activeElement===target))$('#toggle-completed').focus({preventScroll:true});
         break;
       }
       case 'reset-event-times':
@@ -944,6 +1041,11 @@
     render();
   }
   P.init({state:()=>S.data,game:()=>S.game,zone,dateParts,format,civil,range,isTimeline:()=>S.view==='timeline',timelineEvents:()=>{const[lo,hi]=range();return P.arrange(filteredEvents().filter(e=>overlaps(e,lo,hi)));},prepareTimeline:preparePlanning,render,toast,baseEvents:baseFilteredEvents,events:filteredEvents,api,mutate,applyState,openDialog,openAgenda,openEvent});
+  R.init({
+    enabled:()=>!!S.data&&S.view==='timeline'&&!P.creating&&!S.scoping,
+    key:()=>JSON.stringify([S.game,S.version,S.view,range(),zone(),W.view.sort,W.view.group_by,W.view.starred_first,W.view.collapsed_groups,W.view.collapsed_parents,W.view.focus.date,S.located,S.data.settings.hide_completed,W.view.hide_future,S.includePending,[...S.categories],$('#event-search').value]),
+    save:saveManualOrder,render,announce:message=>{$('#order-announcement').textContent=message;}
+  });
   window.PlaytimeCustomize.init({state:()=>S.data,mutate,openDialog,api,refresh,toast});
   window.PlaytimeUX.init({state:()=>S.data,game:()=>S.game,version:activeVersion,progress:syncProgress,zone,format,mutate,openReminders,render,toast});
   refresh();

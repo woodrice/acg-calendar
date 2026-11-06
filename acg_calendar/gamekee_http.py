@@ -35,7 +35,9 @@ class GameKeeHTTP:
         if not p:
             return False
         if image:
-            return p.hostname == "cdnimg-v2.gamekee.com" and (p.path.startswith(f"/wiki2.0/pro/{self.wiki_id}/images/") or p.path.startswith("/wiki2.0/pro/215/video/")) and p.path.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+            # 215 is GameKee's shared editor media namespace. NIKKE's public
+            # calendar links images there as well as in its own Wiki namespace.
+            return p.hostname == "cdnimg-v2.gamekee.com" and (p.path.startswith(f"/wiki2.0/pro/{self.wiki_id}/images/") or p.path.startswith("/wiki2.0/pro/215/images/") or p.path.startswith("/wiki2.0/pro/215/video/")) and p.path.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
         if p.hostname == "www.gamekee.com":
             return p.path in {"/v1/gameServer/list", "/v1/activity/page-list"} or bool(re.fullmatch(r"/v1/content/detail/\d+", p.path))
         return p.hostname == "api-cdn.gamekee.com" and bool(re.fullmatch(rf"/wiki2\.0/pro/{self.wiki_id}/content/\d+\.json", p.path))

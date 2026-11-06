@@ -1,7 +1,7 @@
 'use strict';
 /* Host-only linked views and personal plans. No provider-specific selectors. */
 window.PlaytimePlanner = (() => {
-  let H, editing=null, editingPlan=null, managerSignature=null, focusQueue=Promise.resolve(), inspectedDay=null, dayTab='deadlines';
+  let H, editing=null, editingPlan=null, editingFromDrag=false, managerSignature=null, focusQueue=Promise.resolve(), inspectedDay=null, dayTab='deadlines', saving=false;
   const $=s=>document.querySelector(s), W=window.PlaytimeWorkspace;
   const D=window.PlaytimePlanDrawing;
   const E=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -67,7 +67,7 @@ window.PlaytimePlanner = (() => {
   }
   function planBars(lo,hi){return scopedPlans().filter(p=>H.civil(p.start)<hi&&H.civil(p.end)>lo).map(p=>{
     const a=Math.max(lo,H.civil(p.start)),b=Math.min(hi,H.civil(p.end));
-    return `<div class="timeline-row personal-plan-row"><button type="button" class="event-name" data-plan="${E(p.id)}"><span class="event-name-text"><strong>◇ ${E(p.title)}</strong><small>个人计划 · 可编辑 / 移动</small></span></button><div class="bar-cell plan-track"><button type="button" class="personal-plan-bar" data-plan="${E(p.id)}" style="left:${(a-lo)/(hi-lo)*100}%;width:${(b-a)/(hi-lo)*100}%" title="${E(p.title+' · '+H.format(p.start,{year:true})+' → '+H.format(p.end,{year:true}))}"><span>◇ ${E(p.title)}</span></button></div><button type="button" class="deadline-cell" data-plan="${E(p.id)}"><strong>${E(H.format(p.start))}</strong><span>→ ${E(H.format(p.end))}</span></button><span class="reward-cell">个人安排</span></div>`;
+    return `<div data-row-plan="${E(p.id)}" class="timeline-row personal-plan-row"><button type="button" class="event-name" data-plan="${E(p.id)}"><span class="event-name-text"><strong>◇ ${E(p.title)}</strong><small>个人计划 · 可编辑 / 移动</small></span></button><div class="bar-cell plan-track"><button type="button" class="personal-plan-bar" data-plan="${E(p.id)}" style="left:${(a-lo)/(hi-lo)*100}%;width:${(b-a)/(hi-lo)*100}%" title="${E(p.title+' · '+H.format(p.start,{year:true})+' → '+H.format(p.end,{year:true}))}"><span>◇ ${E(p.title)}</span></button></div><button type="button" class="deadline-cell" data-plan="${E(p.id)}"><strong>${E(H.format(p.start))}</strong><span>→ ${E(H.format(p.end))}</span></button><span class="reward-cell">个人安排</span></div>`;
   }).join('');}
   function monthPlans(serial){const rows=scopedPlans().filter(p=>H.civil(p.start)<serial+1&&H.civil(p.end)>serial);return rows.length?`<button type="button" class="month-plan" data-day="${serial}">◇ 计划 ${rows.length}</button>`:'';}
   function agendaPlans(serial){return `<div class="agenda-plans"><strong>个人安排</strong>${scopedPlans().filter(p=>H.civil(p.start)<serial+1&&H.civil(p.end)>serial).map(planRow).join('')}<button class="button button-small" type="button" data-new-plan-day="${dateKey(serial)}">＋ 安排这一天的游玩</button></div>`;}
@@ -111,7 +111,7 @@ window.PlaytimePlanner = (() => {
     D.stop();
     const p=id?state().plans.find(p=>p.id===id):null;if(id&&!p)return;
     if(!p&&!day&&!selection)day=view().focus.date;
-    editing=id;editingPlan=p;closeDialogs();const event=state().events.find(e=>e.id===eventId),tz=p?.timezone||selection?.timezone||H.zone();
+    editing=id;editingPlan=p;editingFromDrag=!!selection;closeDialogs();const event=state().events.find(e=>e.id===eventId),tz=p?.timezone||selection?.timezone||H.zone();
     const next=new Date(Math.ceil(Date.now()/1800000)*1800000),start=p?.start||next.toISOString(),end=p?.end||new Date(next.valueOf()+3600000).toISOString();
     const games=state().games.map(g=>`<option value="${E(g.id)}">${E(g.name)}</option>`).join('');
     const foldSelect=role=>`<select id="plan-fold-${role}" aria-label="${role==='start'?'开始':'结束'}重复时刻"><option value="">自动（重复时提示选择）</option><option value="0">重复时取较早一次</option><option value="1">重复时取较晚一次</option></select>`;
@@ -123,6 +123,7 @@ window.PlaytimePlanner = (() => {
   }
   function eventOptions(selected=null){const g=$('#plan-game').value,rows=state().events.filter(e=>!g||e.game===g),label=e=>(W.game(e.game)?.short_name||e.game)+' · '+e.title,seen=new Map();for(const e of rows)seen.set(label(e),(seen.get(label(e))||0)+1);$('#plan-event').innerHTML='<option value="">不关联</option>'+rows.map(e=>`<option value="${E(e.id)}">${E(label(e)+(seen.get(label(e))>1?' · '+(e.version_name||'')+(e.start.at?' '+H.format(e.start.at,{dateOnly:true}):''):''))}</option>`).join('');if(selected&&!state().events.some(e=>e.id===selected))$('#plan-event').insertAdjacentHTML('beforeend',`<option value="${E(selected)}">来源活动已不可用（保留关联）</option>`);$('#plan-event').value=selected||'';}
   async function save(move=null){
+    if(saving||!$('#plan-editor-dialog').open)return;
     if(!$('#plan-form').reportValidity())return;
     const body={title:$('#plan-title').value,local_start:$('#plan-start').value,local_end:$('#plan-end').value,timezone:$('#plan-timezone').value.trim(),game_id:$('#plan-game').value||null,event_id:$('#plan-event').value||null,notes:$('#plan-notes').value};
     for(const role of ['start','end']){
@@ -132,9 +133,19 @@ window.PlaytimePlanner = (() => {
     }
     if(move!==null)body.move_minutes=move;
     const submit=$('#plan-form button[type=submit]'),buttons=[...$('#plan-form').querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
-    try{const data=await H.api('/api/plans'+(editing?'/'+editing:''),editing?'PATCH':'POST',body);H.applyState(data);if(move!==null)editor(editing);else{$('#plan-editor-dialog').close();manager();}}
-    catch(e){$('#plan-error').textContent=e.message;$('#plan-error').hidden=false;}
-    finally{if(submit.isConnected)buttons.forEach(b=>b.disabled=false);}
+    saving=true;
+    const form=$('#plan-form'),id=editing,fromDrag=editingFromDrag,before=new Set(state().plans.map(p=>p.id));
+    try{
+      const data=await H.api('/api/plans'+(id?'/'+id:''),id?'PATCH':'POST',body),same=form===$('#plan-form')&&$('#plan-editor-dialog').open;
+      if(same&&fromDrag){const newPlan=data.plans.find(p=>!before.has(p.id));if(newPlan)window.PlaytimeMotion.planSaved(newPlan.id);$('#plan-editor-dialog').close();}
+      H.applyState(data);
+      if(!same)return;
+      if(move!==null)editor(id);
+      else if(fromDrag){H.toast('个人计划已放入时间轴');}
+      else{$('#plan-editor-dialog').close();manager();H.toast(id?'个人计划已更新':'个人计划已保存');}
+    }
+    catch(e){if(form===$('#plan-form')){$('#plan-error').textContent=e.message;$('#plan-error').hidden=false;}}
+    finally{saving=false;if(submit.isConnected)buttons.forEach(b=>b.disabled=false);}
   }
   function paintDay(){
     if(!inspectedDay)return;

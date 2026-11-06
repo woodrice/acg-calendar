@@ -60,6 +60,22 @@ class PreferencesTests(TempStoreTest):
         self.assertEqual(self.workspace.defaults()['theme'],DEFAULT_THEME)
         self.assertTrue(self.workspace.defaults()['layout']['modules'])
 
+    def test_motion_preference_roundtrips_and_legacy_settings_follow_system(self):
+        self.assertEqual(self.store.settings()['ui_motion'], 'auto')
+        for mode in ['auto', 'standard', 'reduced', 'off']:
+            self.app.update_settings({'ui_motion': mode})
+            self.assertEqual(self.app.state()['settings']['ui_motion'], mode)
+        old = self.store.get_meta('settings'); old.pop('ui_motion')
+        self.store.set_meta('settings', old)
+        self.assertEqual(self.store.settings()['ui_motion'], 'auto')
+
+    def test_invalid_motion_does_not_change_settings(self):
+        before = self.store.settings()
+        for value in [None, [], {}, True, 0, 'fast', 'AUTO']:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.app.update_settings({'ui_motion': value})
+            self.assertEqual(self.store.settings(), before)
+
     def test_native_rounding_migrates_and_remains_independent_of_web(self):
         old = copy.deepcopy(THEMES['zzz'])
         del old['desktop_radius']; del old['desktop_control_radius']

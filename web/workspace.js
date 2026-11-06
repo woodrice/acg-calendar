@@ -24,8 +24,8 @@ window.PlaytimeWorkspace = (() => {
     }
     container.style.gridTemplateRows=tracks.join(' ');
   }
-  document.addEventListener('click',e=>{if(e.target.closest('#calendar-expand'))api.focus(!focused);});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&focused&&!document.querySelector('dialog[open]')){api.focus(false);document.querySelector('#calendar-expand').focus({preventScroll:true});}});
+  document.addEventListener('click',e=>{if(e.target.closest('#calendar-expand'))api.focus(!focused,true);});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&focused&&!document.querySelector('dialog[open]')){api.focus(false,true);document.querySelector('#calendar-expand').focus({preventScroll:true});}});
   window.addEventListener('resize',sizeModules);
   const api = {
     accept(state) { data = state; eventOrder = new Map((state.event_order || []).map((id,i)=>[id,i])); for (const fn of listeners) fn(state); },
@@ -35,15 +35,18 @@ window.PlaytimeWorkspace = (() => {
     selected() { return data?.workspace.view.selected_games || []; },
     configure(save) { saveLayout=save; },
     edit(value) { if(value)api.focus(false);editing=value;document.body.classList.toggle('editing-layout',value);api.renderModules(); },
-    focus(value) {
+    focus(value,animate=false) {
       if(value&&editing){api.edit(false);document.querySelector('#finish-layout').hidden=true;}
-      focused=value;document.body.classList.toggle('calendar-focused',value);
-      const button=document.querySelector('#calendar-expand');
-      button.setAttribute('aria-pressed',String(value));
-      button.title=value?'退出专注（Esc）':'专注时间轴';button.setAttribute('aria-label',button.title);
-      if(button.querySelector('.focus-label'))button.querySelector('.focus-label').textContent=value?'退出专注':'专注时间轴';
-      button.querySelector('path').setAttribute('d',value?'m6 3 6 6 6-6M6 21l6-6 6 6':'m6 9 6-6 6 6M6 15l6 6 6-6');
-      sizeModules();
+      const apply=()=>{
+        focused=value;document.body.classList.toggle('calendar-focused',value);
+        const button=document.querySelector('#calendar-expand');
+        button.setAttribute('aria-pressed',String(value));
+        button.title=value?'退出专注（Esc）':'专注时间轴';button.setAttribute('aria-label',button.title);
+        if(button.querySelector('.focus-label'))button.querySelector('.focus-label').textContent=value?'退出专注':'专注时间轴';
+        button.querySelector('path').setAttribute('d',value?'m6 3 6 6 6-6M6 21l6-6 6 6':'m6 9 6-6 6 6M6 15l6 6 6-6');
+        sizeModules();
+      };
+      if(animate&&value!==focused)window.PlaytimeMotion.focusLayout(apply);else apply();
     },
     applyTheme(theme) {
       const root=document.documentElement;

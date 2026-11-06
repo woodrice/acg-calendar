@@ -14,11 +14,19 @@ import unicodedata
 
 from .artwork import image_kind
 from .gamekee_http import GameKeeHTTP, secure_url
-from .network import deferring_images, network_job
+from .network import ImageDeferred, deferring_images, network_job
 from .parser import iso, stamp
 from .plugin_media import local_file
 from .providers import JsonProvider, bounded_json, date_value, public_url
-from .sync_progress import SyncProgress
+from .sync_progress import SyncProgress, calendar_changes
+
+
+class NoticeBodyDeferred(ValueError):
+    """Keep available dates/images usable before trying an optional notice CDN."""
+
+    def __init__(self, cid, metadata):
+        super().__init__(f"公告 {cid} 正文稍后补读，新条目暂按卡片预计时间")
+        self.cid, self.metadata = cid, metadata
 
 
 def clean(text):
@@ -397,8 +405,8 @@ class GameKeeProvider(JsonProvider):
             raise ValueError("GameKee 公开接口结构变化")
         return result
 
-    def notice(self, cid):
-        result = self.read_json("/v1/content/detail/" + str(cid))["data"]
+    def notice(self, cid, *, defer_cdn=False, metadata=None):
+        result = metadata if metadata is not None else self.read_json("/v1/content/detail/" + str(cid))["data"]
         if result.get("game_id") != self.source["wiki_id"] or result.get("is_del"):
             raise ValueError("公告不属于配置的 Wiki")
         path = local_file(self.directory, "sources/" + str(cid) + ".json")
@@ -407,7 +415,20 @@ class GameKeeProvider(JsonProvider):
             return cached
         body = result.get("content_json") or result.get("content")
         if not body:
-            body = json.loads(self.http.read(result["content_cdn"])).get("content")
+            if defer_cdn:
+                raise NoticeBodyDeferred(cid, result)
+            key = self.sync_key + ":notice-cdn"
+            unavailable = self.store.get_meta(key, {})
+            now = dt.datetime.now(dt.timezone.utc)
+            if unavailable.get("retry_at") and stamp(unavailable["retry_at"]) > now:
+                raise ValueError("公告正文 CDN 先前返回 HTTP 567，24 小时内不重复探测；不影响卡片头图")
+            try:
+                body = json.loads(self.http.read(result["content_cdn"])).get("content")
+            except urllib.error.HTTPError as error:
+                if error.code == 567:
+                    self.store.set_meta(key, {"status": 567, "retry_at": iso(now + dt.timedelta(hours=24))})
+                raise
+            self.store.set_meta(key, {})
         notice = {"schema_version": 1, "id": cid, "title": clean(result.get("title")), "updated_at": result.get("updated_at"), "source_url": f"https://www.gamekee.com/{self.source['game_alias']}/{cid}.html", "blocks": content_blocks(body)}
         atomic_json(path, notice)
         return notice
@@ -434,10 +455,18 @@ class GameKeeProvider(JsonProvider):
         cutoff = now - dt.timedelta(days=self.config["collection"]["history_days"])
         eligible = [r for r in cards if r.get("pub_area") == self.source["server_name"] and type(r.get("end_at")) is int and stamp(unix(r["end_at"])) >= cutoff]
         ids = list(dict.fromkeys(cid for r in eligible if (cid := article_id(r.get("link_url", ""), self.source["game_alias"]))))[:self.config["collection"]["max_announcements"]]
-        notices, errors = [], []
+        notices, errors, pending = [], [], []
         for cid in ids:
             try:
-                notices.append(self.notice(cid))
+                notices.append(self.notice(cid, defer_cdn=True))
+            except NoticeBodyDeferred as deferred:
+                pending.append(deferred)
+                errors.append(str(deferred))
+                cached_path = local_file(self.directory, "sources/" + str(cid) + ".json")
+                if cached_path.is_file():
+                    cached = bounded_json(cached_path)
+                    if cached.get("id") == cid:
+                        notices.append(cached)
             except (OSError, ValueError, KeyError, TypeError) as error:
                 errors.append(f"公告 {cid} 读取失败（{type(error).__name__}）；仅卡片条目保留为预计")
                 cached_path = local_file(self.directory, "sources/" + str(cid) + ".json")
@@ -459,27 +488,62 @@ class GameKeeProvider(JsonProvider):
         self.store.replace_game_versions(self.descriptor["id"], versions)
         progress.calendar_saved(old, versions)
         progress.stage("images")
-        self.attach_images(feed)
+        image_attempts = set()
+        image_failures = []
+        self.attach_images(feed, image_attempts, image_failures)
+        if pending:
+            # Some GameKee notice CDNs reject anonymous reads with HTTP 567. The
+            # shared limiter must cool down the site in that case: download proven
+            # calendar pictures first, without bypassing or resetting that cooldown.
+            versions = self.normalize(feed)
+            atomic_json(self.directory / "events.json", feed)
+            self.store.replace_game_versions(self.descriptor["id"], versions)
+            progress.stage("fetch", "日期与卡片头图已保存，补读公告正文")
+            for deferred in pending:
+                errors.remove(str(deferred))
+                try:
+                    notice = self.notice(deferred.cid, metadata=deferred.metadata)
+                    notices = [n for n in notices if n["id"] != deferred.cid] + [notice]
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    status = f"HTTP {error.code}" if isinstance(error, urllib.error.HTTPError) else str(error)[:120]
+                    cached = any(n["id"] == deferred.cid for n in notices)
+                    errors.append(f"公告 {deferred.cid} 正文未更新（{status}）；" + ("沿用上次核对正文" if cached else "新条目时间仍为预计") + "；已取得的卡片头图保留")
+            progress.stage("parse")
+            feed = compile_feed(cards, notices, self.config, self.source, iso(now), now, errors)
+            progress.stage("images")
+            self.attach_images(feed, image_attempts, image_failures)
         versions = self.normalize(feed)
         atomic_json(self.directory / "events.json", feed)
         self.store.replace_game_versions(self.descriptor["id"], versions)
-        progress.images_done(versions, sum(v["analysis"]["artwork"]["download_errors"] for v in feed["versions"]))
+        progress.result["calendar"] = calendar_changes(old, versions)
+        notes = []
+        if any(v["analysis"]["artwork"].get("pending") for v in feed["versions"]):
+            notes.append("部分头图待补齐，受本轮图片额度、下载失败或站点冷却限制")
+        if any(v["analysis"]["artwork"].get("rejected") for v in feed["versions"]):
+            notes.append("部分图片地址不在允许的来源范围内，未下载")
+        progress.images_done(versions, sum(v["analysis"]["artwork"]["download_errors"] for v in feed["versions"]), notes)
         self.store.set_meta(self.sync_key, progress.finish({"running": False, "last_attempt": iso(now), "last_success": iso(now), "error": None, "mode": "gamekee", "message": f"GameKee 外服资料已同步；{len(errors)} 篇公告待核对", "warnings": errors}))
         return feed
 
-    def attach_images(self, feed):
-        loaded, errors = {}, []
+    def attach_images(self, feed, attempted=None, failures=None):
+        attempted = set() if attempted is None else attempted
+        loaded, errors = {}, [] if failures is None else failures
         for version in feed["versions"]:
+            rejected = pending = 0
             for event in version["events"]:
                 url = event.get("image_url")
-                if not url or not self.http.allowed(url, image=True):
+                if not url:
+                    continue
+                if not self.http.allowed(url, image=True):
+                    rejected += 1
                     continue
                 url = "https:" + url if url.startswith("//") else url
                 key = hashlib.sha256(url.encode()).hexdigest()[:32]
                 existing = next(iter(sorted((self.directory / "assets").glob(key + ".*"))), None)
                 if existing:
                     loaded[url] = "assets/" + existing.name
-                if url not in loaded and len(loaded) < self.config["collection"]["max_images"]:
+                if url not in loaded and url not in attempted and len(attempted) < self.config["collection"]["max_images"]:
+                    attempted.add(url)
                     try:
                         data = self.http.read(url, image=True)
                         if len(data) > min(5_000_000, self.config["collection"].get("max_image_bytes", 5_000_000)):
@@ -491,8 +555,12 @@ class GameKeeProvider(JsonProvider):
                         temporary.write_bytes(data)
                         temporary.replace(path)
                         loaded[url] = "assets/" + path.name
+                    except ImageDeferred:
+                        attempted.discard(url)
                     except (OSError, ValueError) as error:
                         errors.append(str(error)[:100])
                 if url in loaded:
                     event["artwork"] = {"file": loaded[url], "source_url": event["source_url"]}
-            version["analysis"]["artwork"] = {"matched": sum(bool(e.get("artwork")) for e in version["events"]), "download_errors": len(errors)}
+                else:
+                    pending += 1
+            version["analysis"]["artwork"] = {"matched": sum(bool(e.get("artwork")) for e in version["events"]), "download_errors": len(errors), "pending": pending, "rejected": rejected}

@@ -1,8 +1,10 @@
 """Real NIKKE scheduling fixtures, conservative matching and plugin isolation."""
 import copy
+import hashlib
 import json
 import shutil
 import unittest
+import urllib.error
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -13,7 +15,9 @@ from acg_calendar.parser import ROOT, stamp
 from acg_calendar.plugin_media import import_image, local_file
 from acg_calendar.providers import create_registry
 from acg_calendar.reminders import ReminderEngine
+from acg_calendar.network import NetworkManager, NetworkDeferred, deferring_images
 from test_calendar import TempStoreTest
+from test_network import Clock, Reply
 
 PACKAGE = ROOT / "plugins/nikke-global"
 NOW = stamp("2026-10-19T18:00:00Z")
@@ -91,8 +95,18 @@ class NoticeTests(unittest.TestCase):
         http = GameKeeHTTP("nikke", 1253)
         self.assertTrue(http.allowed("https://www.gamekee.com/v1/activity/page-list?serverId=19"))
         self.assertTrue(http.allowed("//cdnimg-v2.gamekee.com/wiki2.0/pro/1253/images/test.png", image=True))
+        self.assertTrue(http.allowed("//cdnimg-v2.gamekee.com/wiki2.0/pro/215/images/test.jpg", image=True))
         for url in ["http://127.0.0.1/test.png", "https://cdnimg-v2.gamekee.com.evil.example/a.png", "https://cdnimg-v2.gamekee.com/wiki2.0/pro/1253/images/%2e%2e/a.png", "https://cdnimg-v2.gamekee.com/wiki2.0/pro/1253/images/a.svg", "https://cdnimg-v2.gamekee.com/wiki2.0/pro/999/images/a.png"]:
             self.assertFalse(http.allowed(url, image=True), url)
+
+    def test_october_29_calendar_provides_distinct_allowed_pictures(self):
+        cards = read(ROOT / 'tests/fixtures/gamekee-nikke-20261029-cards.json')['data']
+        feed = compile_feed(cards, [], self.rules, self.source, 'checked', stamp('2026-11-04T12:00:00Z'))
+        events = feed['versions'][0]['events']; http = GameKeeHTTP('nikke', 1253)
+        self.assertEqual(len(events), 11)
+        self.assertTrue(all(e.get('image_url') and http.allowed(e['image_url'], image=True) for e in events))
+        self.assertEqual(len({e['image_url'] for e in events}), 11)
+        self.assertTrue(all(e['end']['state'] == 'estimated' for e in events))
 
 
 class PluginTests(TempStoreTest):
@@ -153,6 +167,97 @@ class PluginTests(TempStoreTest):
         metadata = {"game_id": 1253, "updated_at": read(self.plugin / "sources/723266.json")["updated_at"]}
         with patch.object(self.provider, "read_json", return_value={"data": metadata}), patch.object(self.provider.http, "read", side_effect=AssertionError("CDN should not be requested")):
             self.assertEqual(self.provider.notice(723266)["id"], 723266)
+
+    def test_blocked_notice_cdn_cannot_prevent_calendar_pictures_or_disable_limiter(self):
+        cards = [r for r in read(ROOT / 'tests/fixtures/gamekee-nikke-20261029-cards.json')['data'] if r['id'] in (7991, 7994)]
+        picture = (self.plugin / 'assets/app-icon.png').read_bytes()
+        calls, clock = [], Clock()
+
+        class Opener:
+            def open(inner, request, timeout):
+                url = request.full_url; calls.append(url)
+                if 'cdnimg-v2.gamekee.com' in url:
+                    return Reply(picture, {'Content-Type': 'image/png'})
+                if 'api-cdn.gamekee.com' in url:
+                    raise urllib.error.HTTPError(url, 567, 'CDN unavailable', {}, None)
+                if '/gameServer/list' in url:
+                    data = [{'id': 19, 'game_id': 1253, 'name': '外服'}]
+                elif '/activity/page-list' in url:
+                    data = cards
+                else:
+                    cid = int(url.rsplit('/', 1)[1])
+                    data = {'game_id': 1253, 'title': '更新公告', 'updated_at': 1, 'content_cdn': f'https://api-cdn.gamekee.com/wiki2.0/pro/1253/content/{cid}.json'}
+                return Reply(json.dumps({'code': 0, 'data': data}).encode())
+
+        manager = NetworkManager(self.store, clock=clock, waiter=clock.advance, opener=Opener(), uniform=lambda a, b: 0)
+        self.store.network = manager
+        feed = self.provider.collect(stamp('2026-11-04T12:00:00Z'))
+        self.assertTrue(all(e.get('artwork') for e in feed['versions'][0]['events']))
+        cdn_calls = [u for u in calls if 'api-cdn.gamekee.com' in u]
+        image_calls = [u for u in calls if 'cdnimg-v2.gamekee.com' in u]
+        self.assertEqual(len(image_calls), 2)
+        self.assertEqual(len(cdn_calls), 1, 'One rejected CDN probe must suppress other probes for 24 hours')
+        self.assertTrue(all(calls.index(u) < calls.index(cdn_calls[0]) for u in image_calls))
+        self.assertIn('HTTP 567', ' '.join(feed['versions'][0]['warnings']))
+        status = self.store.get_meta(self.provider.sync_key)
+        self.assertEqual(status['result']['images']['added'], 2)
+        self.assertFalse(status['running'])
+        with manager.job(), self.assertRaises(NetworkDeferred):
+            self.provider.http.read('https://www.gamekee.com/v1/content/detail/999999')
+        clock.advance(60)
+        self.provider.collect(stamp('2026-11-04T12:01:00Z'))
+        self.assertEqual(len([u for u in calls if 'api-cdn.gamekee.com' in u]), 1)
+        self.assertEqual(manager.policy['interval_seconds'], 10)
+
+    def test_successful_deferred_body_is_read_once_and_updates_times_after_images(self):
+        card = copy.deepcopy(read(ROOT / 'tests/fixtures/gamekee-nikke-20261029-cards.json')['data'][0])
+        card.update(title='【活动】SAMPLE EVENT', link_url='https://www.gamekee.com/nikke/725772.html')
+        metadata = {'game_id': 1253, 'title': '10月29日版本更新公告', 'updated_at': 1, 'content_cdn': 'https://api-cdn.gamekee.com/wiki2.0/pro/1253/content/725772.json'}
+        body = json.dumps({'content': [{'children': [{'text': '4 SAMPLE EVENT'}]}, {'children': [{'text': '*活动时间：2026年10月29日12:00:00～2026年11月19日04:59:59（UTC+9）'}]}]}).encode()
+        calls = []
+        def response(url, image=False):
+            from acg_calendar.network import ImageDeferred, _defer_images
+            if image and _defer_images.get(): raise ImageDeferred('deferred')
+            calls.append('image' if image else 'body')
+            return (self.plugin / 'assets/app-icon.png').read_bytes() if image else body
+        replies = [{'code': 0, 'data': [{'id': 19, 'game_id': 1253, 'name': '外服'}]}, {'code': 0, 'data': [card]}, {'code': 0, 'data': metadata}]
+        with patch.object(self.provider, 'read_json', side_effect=replies) as read_json, patch.object(self.provider.http, 'read', side_effect=response):
+            feed = self.provider.collect(stamp('2026-11-04T12:00:00Z'))
+        self.assertEqual(read_json.call_count, 3, 'Deferred body must reuse its already-read metadata')
+        self.assertEqual(calls, ['image', 'body'])
+        event = feed['versions'][0]['events'][0]
+        self.assertEqual(event['id'], 'calendar-' + str(card['id']))
+        self.assertEqual(event['end']['state'], 'exact')
+        self.assertEqual(event['end']['at'], '2026-11-18T19:59:59Z')
+        self.assertTrue(event.get('artwork'))
+        self.assertEqual(feed['versions'][0]['warnings'], [])
+
+    def test_cached_pictures_do_not_consume_new_download_budget(self):
+        events = copy.deepcopy(read(ROOT / 'tests/fixtures/gamekee-nikke-20261029-cards.json')['data'][:2])
+        feed = compile_feed(events, [], self.provider.config, self.provider.source, 'checked', stamp('2026-11-04T12:00:00Z'))
+        self.provider.config['collection']['max_images'] = 1
+        url = 'https:' + events[0]['picture']; key = hashlib.sha256(url.encode()).hexdigest()[:32]
+        picture = (self.plugin / 'assets/app-icon.png').read_bytes()
+        (self.plugin / 'assets' / (key + '.png')).write_bytes(picture)
+        with patch.object(self.provider.http, 'read', return_value=picture) as fetch:
+            self.provider.attach_images(feed)
+        self.assertEqual(fetch.call_count, 1)
+        self.assertTrue(all(e.get('artwork') for e in feed['versions'][0]['events']))
+
+    def test_duplicate_failed_urls_are_not_retried_and_deferred_is_not_failure(self):
+        cards = read(ROOT / 'tests/fixtures/gamekee-nikke-20261029-cards.json')['data'][:2]
+        cards = copy.deepcopy(cards); cards[1]['picture'] = cards[0]['picture']
+        feed = compile_feed(cards, [], self.provider.config, self.provider.source, 'checked', stamp('2026-11-04T12:00:00Z'))
+        with deferring_images():
+            self.provider.attach_images(feed)
+        self.assertEqual(feed['versions'][0]['analysis']['artwork']['download_errors'], 0)
+        with patch.object(self.provider.http, 'read', side_effect=OSError('unavailable')) as fetch:
+            attempts, failures = set(), []
+            self.provider.attach_images(feed, attempts, failures)
+            self.provider.attach_images(feed, attempts, failures)
+        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(feed['versions'][0]['analysis']['artwork']['download_errors'], 1)
+        self.assertEqual(feed['versions'][0]['analysis']['artwork']['pending'], 2)
 
     def test_inaccessible_notice_falls_back_and_image_failure_keeps_times(self):
         cards = read(ROOT / "tests/fixtures/gamekee-nikke-cards.json")
