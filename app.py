@@ -38,7 +38,7 @@ def plugin_folder(name):
     return name
 
 
-SETTING_FIELDS = {"active_game", "timezone", "view", "reminders_enabled", "reminder_offsets", "native_notifications", "sync_interval_minutes", "hide_completed", "reminder_scope", "disabled_plugins"}
+SETTING_FIELDS = {"active_game", "timezone", "view", "reminders_enabled", "reminder_offsets", "native_notifications", "sync_interval_minutes", "hide_completed", "reminder_scope", "disabled_plugins", "ui_motion"}
 
 
 class Application:
@@ -398,6 +398,8 @@ class Application:
             raise ValueError("时区格式无效")
         if "view" in patch and patch["view"] not in {"timeline", "month", "list", "upcoming"}:
             raise ValueError("不支持的日历视图")
+        if "ui_motion" in patch and (not isinstance(patch["ui_motion"], str) or patch["ui_motion"] not in {"auto", "standard", "reduced", "off"}):
+            raise ValueError("不支持的界面动效模式")
         if "sync_interval_minutes" in patch and (type(patch["sync_interval_minutes"]) is not int or not 1080 <= patch["sync_interval_minutes"] <= 1440):
             raise ValueError("自动复查间隔需为 18–24 小时，另加 0–2 小时随机错峰")
         if "reminder_offsets" in patch:
@@ -552,6 +554,8 @@ def handler_for(application):
                 assets.update({"/customize.js": "customize.js", "/customize.css": "customize.css", "/design.css": "design.css", "/assets/arknights-app-icon.png": "assets/arknights-app-icon.png", "/assets/endfield-app-icon.png": "assets/endfield-app-icon.png"})
                 assets.update({'/planner.js':'planner.js', '/planner.css':'planner.css', '/plan-drawing.js':'plan-drawing.js'})
                 assets.update({'/navigation.js':'navigation.js', '/ux.css':'ux.css'})
+                assets.update({'/motion.js':'motion.js', '/motion.css':'motion.css'})
+                assets['/timeline-order.js'] = 'timeline-order.js'
                 if path not in assets:
                     return self.send({"error": "页面不存在"}, 404)
                 file = ROOT / "web" / assets[path]
@@ -586,7 +590,8 @@ def handler_for(application):
             try:
                 path = urllib.parse.urlsplit(self.path).path
                 length = int(self.headers.get("Content-Length", "0"))
-                if not 0 <= length <= (backup.MAX_BYTES if path in {"/api/backups/restore", "/api/backups/preview"} else 16000):
+                limit = backup.MAX_BYTES if path in {"/api/backups/restore", "/api/backups/preview"} else 512_000 if path == "/api/workspace" else 16_000
+                if not 0 <= length <= limit:
                     return self.send({"error": "请求过大"}, 413)
                 try:
                     payload = json.loads(self.rfile.read(length) or b"{}")

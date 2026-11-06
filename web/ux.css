@@ -113,4 +113,4 @@ body[data-calendar-view=month] #calendar{display:flex;flex-direction:column;over
   .ux-workspace .header-actions button,.ux-workspace .view-switch button,.ux-workspace #filter-button,.ux-workspace #sidebar-more,.ux-workspace #calendar-expand,.ux-workspace #more-tools,.ux-workspace #reset-filters,.ux-workspace .day-actions button,.ux-workspace .day-tabs button{min-height:44px}
   .ux-workspace .workspace-rail .rail-action{min-height:48px}
 }
-@media(prefers-reduced-motion:reduce){.ux-workspace *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){html:not([data-motion]) .ux-workspace *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}

@@ -182,6 +182,7 @@ public sealed partial class CalendarWindow
         heightSlider.ValueChanged += (_, _) => { if (updatingSettings) return; widgetHeight = heightSlider.Value; ApplyPresentation(); SavePreferences(); Saved($"挂件高度 {widgetHeight:0}"); };
         BuildResidentSettings();
         BuildThemeSettings();
+        BuildMotionSettings();
         Section(reminderSettings, "截止提醒");
         reminderToggle.Content = "开启活动截止提醒"; reminderToggle.IsEnabled = false; reminderToggle.Margin = new Thickness(0, 0, 0, 8);
         reminderToggle.Click += async (_, _) => { if (!updatingSettings) await Mutate("/api/settings", new { reminders_enabled = reminderToggle.IsChecked == true }); }; reminderSettings.Children.Add(reminderToggle);

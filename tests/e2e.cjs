@@ -24,6 +24,7 @@ const output='logs/demo-qa';
     const context=await browser.newContext({viewport:{width:1440,height:1050},timezoneId:'America/New_York',locale:'zh-CN'});
     const page=await context.newPage();
     page.on('pageerror',error=>errors.push(error.message));
+    await page.clock.setFixedTime(new Date('2026-10-27T20:00:00Z'));
     await page.goto(base);
     await page.locator('.timeline-row').first().waitFor();
     assert.equal(await page.locator('#reward-total').innerText(),'11,000嵌晶玉');

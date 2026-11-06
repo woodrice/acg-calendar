@@ -70,7 +70,7 @@ def complete_theme(saved):
     for key in THEME_COLORS:
         if isinstance(result.get(key),str) and re.fullmatch(r'#[0-9a-fA-F]{6}',result[key]): result[key] = result[key].upper()
     return result
-DEFAULT_VIEW = {"selected_games": [], "scope": "single", "sort": "start", "starred_first": True, "hide_future": False, "group_by": "category", "collapsed_groups": [], "collapsed_parents": [], "focus_timezone": "UTC", "focus": {"date": None, "event_id": None}}
+DEFAULT_VIEW = {"selected_games": [], "scope": "single", "sort": "start", "manual_order": [], "starred_first": True, "hide_future": False, "group_by": "category", "collapsed_groups": [], "collapsed_parents": [], "focus_timezone": "UTC", "focus": {"date": None, "event_id": None}}
 
 
 def contrast(first, second):
@@ -148,8 +148,11 @@ class WorkspaceService:
             games = v["selected_games"]
             if not isinstance(games, list) or len(games) > 100 or any(not isinstance(g, str) or ("selected_games" in p and g not in self.registry.ids) for g in games) or len(set(games)) != len(games):
                 raise ValueError("请选择已安装的游戏，且不得重复")
-            if v["sort"] not in {"start", "remaining", "title"} or v["group_by"] not in {"none", "category", "game"}:
+            if v["sort"] not in {"start", "remaining", "title", "manual"} or v["group_by"] not in {"none", "category", "game"}:
                 raise ValueError("排序或分组规则无效")
+            order = v["manual_order"]
+            if not isinstance(order, list) or len(order) > 5000 or any(not isinstance(i, str) or not 1 <= len(i) <= 200 for i in order) or len(set(order)) != len(order):
+                raise ValueError("手动排序需要不重复的活动 ID（最多 5000 项）")
             if any(type(v[k]) is not bool for k in ("starred_first", "hide_future")):
                 raise ValueError("视图开关必须为布尔值")
             if not isinstance(v["collapsed_groups"], list) or len(v["collapsed_groups"]) > 100 or any(not isinstance(g, str) or len(g) > 100 for g in v["collapsed_groups"]):
@@ -263,9 +266,12 @@ class WorkspaceService:
 def sort_events(events, view, now=None):
     now = now or dt.datetime.now(dt.timezone.utc)
     far = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
+    positions = {event_id: index for index, event_id in enumerate(view.get("manual_order", ()))} if view["sort"] == "manual" else {}
     def key(event):
         start, end = stamp(event["start"].get("at")), stamp(event["end"].get("at"))
-        if view["sort"] == "remaining":
+        if view["sort"] == "manual":
+            part = (0, positions[event["id"]]) if event["id"] in positions else (1, start or far)
+        elif view["sort"] == "remaining":
             # Running -> future -> unknown deadline -> ended; uncertain ends do not
             # masquerade as confirmed deadlines. Stars affect row order only.
             trusted = event["end"]["state"] in {"exact", "confirmed", "manual"}

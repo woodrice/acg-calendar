@@ -2,7 +2,7 @@
 
 当前版本：**V0.2.4** · [更新记录](CHANGELOG.md) · [待完成功能](TODO.md) · [架构说明](docs/architecture.md) · [插件接口](docs/plugins.md)
 
-V0.2.4 重组日程、计划、游戏管理与设置，增加截止总览、桌面固定快捷栏和短窗布局；完善明日方舟官网活动与头图采集、备份恢复、手机和键盘操作。插件 API 1 与已有个人数据继续兼容。详见 [更新记录](CHANGELOG.md) · [操作说明](docs/preferences.md) · [下载与升级](docs/releases/v0.2.4.md)。
+**V0.2.7** 加入网页时间轴逐行展开、长按拖动排序、完成撤销与提醒定位，并改进 NIKKE 头图同步。Windows x64 自带环境便携包完整解压后双击 `Playtime.exe`，无需另装 Python 或 .NET。插件 API 1 与已有个人数据继续兼容。详见 [下载与升级](docs/releases/v0.2.7.md) · [更新记录](CHANGELOG.md) · [操作说明](docs/preferences.md)。
 
 自动复查默认每 24 小时后执行，另加 0–2 小时错峰；可选 18 小时。首次或离线过期补查错峰 1–10 分钟，同站请求至少间隔 10 秒。倒计时在本地运行，重启保留复查计划。
 

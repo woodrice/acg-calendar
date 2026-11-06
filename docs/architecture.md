@@ -1,5 +1,7 @@
 # 模块化架构（插件 API 1）
 
+界面动效属于宿主呈现层：`settings.ui_motion` 为可选的 `auto / standard / reduced / off`，旧设置默认 `auto`，通过原设置接口校验和持久化。网页 `motion.js` 与桌面 `CalendarWindow.Motion.cs` 不拥有排序、同步阶段或计划数据；真实状态先提交成功，再提供视觉反馈。窗口贴边动画继续由原控制器管理，插件 API 和公告格式不变。详见 [动效说明](motion-feedback.md)。
+
 本次升级保留原数据库、活动 ID、完成状态、备注、手动校正与提醒记录。新增表通过 `CREATE TABLE IF NOT EXISTS` 创建；个人配置采用独立的版本号，和软件版本分开。
 
 ## 分层与依赖方向
@@ -65,7 +67,7 @@
 
 `view` 字段：`selected_games`、`scope`（single/all/selected）、`sort`（start/remaining/title）、`starred_first`、`hide_future`、`group_by`（none/category/game）、`collapsed_groups`、`collapsed_parents`、`focus_timezone`、`focus`（date/event_id，可设 null 清除）。新增字段在 schema 1 中自动补齐。`presentation.py` 提供主程序的日期范围、显式关系和截止节点投影，前端 `planner.js` / WPF `CalendarWindow.Planner.cs` 消费相同元数据。
 
-- 收藏先于普通活动。网页时间轴以“★ 收藏”单独置顶，其余活动按选择的规则分组和排序；排序只改变行顺序。
+- 开启收藏优先时，网页时间轴以“★ 收藏”单独置顶，其余活动按选择的规则分组和排序。手动排序使用可选的 `view.manual_order` 保存活动 ID 序列。网页拖动只调整同组可见条目的相对顺序，子活动随父活动显示。旧设置沿用原排序方式，手动排序中未记录的活动按开始时间排在同组已排序活动之后。
 - 剩余时间排序：进行中且截止明确 → 未开放 → 截止待定/预计 → 已结束；同档按相应日期，再按活动 ID 稳定排序。标题排序在后端按 Unicode 大小写折叠排序。
 - 隐藏未开放：未来开始及开始待定的活动隐藏；预计开始时刻已过的条目仍展示“待核实”标记。收藏不绕过隐藏规则。“显示全部”会关闭这个筛选。
 - 截止密度只统计当前游戏和筛选范围内、未完成、时间明确且区间有效的截止与关闭阶段，兑换截止单列，去重按活动 ID + UTC 时刻；不受父活动折叠或临时日期聚焦影响。它表示截止数量，不表示游玩耗时。`timezone=auto` 在服务端查询时回落 UTC，客户端应传具体 IANA 时区。

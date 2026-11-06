@@ -20,6 +20,9 @@ window.PlaytimeUX=(()=>{
     $('.catalog-tools').append($('#more-tools'));
     $('[data-preference-panel="layout"]').prepend($('#heading-toggle'));
     const timeField=document.createElement('label');timeField.className='settings-timezone field-label';timeField.textContent='显示时区';const timeSelect=$('#timezone-select').cloneNode(true);timeSelect.id='settings-timezone';timeField.append(timeSelect);$('.preference-tabs').before(timeField);
+    const motion=document.createElement('label');motion.className='motion-setting field-label';motion.innerHTML='界面反馈动效<select id="ui-motion"><option value="auto">跟随系统（默认）</option><option value="standard">标准 · 利落位移</option><option value="reduced">减少 · 仅轻微淡入淡出</option><option value="off">关闭</option></select>';
+    $('[data-preference-panel="theme"]').prepend(motion);
+    $('#ui-motion').addEventListener('change',async()=>{const b=$('#ui-motion');b.disabled=true;try{if(await H.mutate('/api/settings',{ui_motion:b.value}))H.toast('界面反馈动效已保存');}finally{b.disabled=false;b.value=H.state().settings.ui_motion||'auto';}});
     timeSelect.addEventListener('change',()=>{$('#timezone-select').value=timeSelect.value;$('#timezone-select').dispatchEvent(new Event('change',{bubbles:true}));});
     const placeholder=document.createElement('div');placeholder.className='filter-placeholder';placeholder.hidden=true;$('.sidebar').before(placeholder);
     const inertBefore=new Map();
@@ -87,9 +90,11 @@ window.PlaytimeUX=(()=>{
     const versionFor=g=>H.game()===g.id?H.version():state.versions.find(v=>v.game===g.id);
     const message=games.length===1?(versionFor(games[0])?.source?.label||games[0].source_label)+' · '+(H.progress(statuses[0])||brief):brief;
     $('#settings-timezone').value=$('#timezone-select').value;
+    $('#ui-motion').value=state.settings.ui_motion||'auto';
     const source=$('#source-status');source.setAttribute('aria-label','日历与同步状态');source.classList.toggle('warning',failed>0);source.title=message;
-    const statusHTML=`<span class="status-point"></span><span>${E(message)}</span><button type="button" id="source-details" class="text-button">资料与同步详情 ↗</button>`;
-    if(source.innerHTML!==statusHTML)source.innerHTML=statusHTML;
+    const stages=window.PlaytimeMotion.stages(statuses),signature=JSON.stringify(statuses.map(s=>[s.running,s.stage?.name,Boolean(s.waiting),s.error,s.result?.calendar,s.result?.images]));
+    const statusHTML=`<span class="status-point"></span><span>${E(message)}</span><button type="button" id="source-details" class="text-button">资料与同步详情 ↗</button>${stages}`;
+    if(source.innerHTML!==statusHTML){source.innerHTML=statusHTML;if(source._stageSignature&&source._stageSignature!==signature)window.PlaytimeMotion.feedback(source);}source._stageSignature=signature;
     const cards=games.map(g=>{
       const s=state.sync_by_game?.[g.id]||{},v=versionFor(g),source=v?.source||{};
       const progress=H.progress(s),stamp=source.fetched_at?H.format(source.fetched_at,{year:true}):'尚未记录';

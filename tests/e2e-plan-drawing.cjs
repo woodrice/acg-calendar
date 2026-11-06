@@ -48,7 +48,9 @@ const base='http://127.0.0.1:8804',DAY=86400000;
     assert.ok(Math.abs(Date.parse((await page.locator('#plan-start').inputValue())+'Z')-Date.parse('2026-10-20T18:00:00Z'))<=1800000);
     assert.ok(Math.abs(Date.parse((await page.locator('#plan-end').inputValue())+'Z')-Date.parse('2026-10-22T20:00:00Z'))<=1800000);
     assert.equal((await state()).plans.length,3,'Dragging creates a draft, not a saved plan');
-    await page.locator('#plan-title').fill('拖选生成的规划');await page.locator('#plan-form button[type=submit]').click();await page.locator('#plans-dialog[open]').waitFor();
+    await page.locator('#plan-title').fill('拖选生成的规划');await page.locator('#plan-form button[type=submit]').click();await page.locator('.personal-plan-bar').filter({hasText:'拖选生成的规划'}).waitFor();
+    assert.equal(await page.locator('#plans-dialog').evaluate(d=>d.open),false,'A saved drag returns to the timeline to show the new bar');
+    await page.locator('#rail-plans').click();await page.locator('#plans-dialog[open]').waitFor();
     let saved=(await state()).plans.find(p=>p.title==='拖选生成的规划');assert.ok(saved);assert.equal(await page.locator(`[data-plan-summary="${saved.id}"] .plan-coverage [data-event]`).count(),2);
     await page.locator('#plans-dialog [data-close]').click();await page.locator('.personal-plan-bar').filter({hasText:'拖选生成的规划'}).waitFor();
     // Click-only and Esc cancel do not save; normal event clicking resumes.
@@ -66,11 +68,11 @@ const base='http://127.0.0.1:8804',DAY=86400000;
     await page.locator('#rail-plans').click();await page.locator('[data-start-plan]').click();await page.locator('#plan-draw-step').selectOption('1440');
     a=await axis();track=await page.locator('[data-plan-create-track]').boundingBox();await page.mouse.move(x('2026-11-01T00:00:00Z',a),track.y+30);await page.mouse.down();await page.mouse.move(x('2026-11-02T00:00:00Z',a),track.y+30,{steps:10});await page.mouse.up();
     await page.locator('#plan-editor-dialog[open]').waitFor();assert.equal(await page.locator('#plan-start').inputValue(),'2026-11-01T00:00');assert.equal(await page.locator('#plan-end').inputValue(),'2026-11-02T00:00');
-    await page.locator('#plan-title').fill('夏令时整日规划');await page.locator('#plan-form button[type=submit]').click();await page.locator('#plans-dialog[open]').waitFor();
+    await page.locator('#plan-title').fill('夏令时整日规划');await page.locator('#plan-form button[type=submit]').click();await page.locator('.personal-plan-bar').filter({hasText:'夏令时整日规划'}).waitFor();
     const dst=(await state()).plans.find(p=>p.title==='夏令时整日规划');assert.equal(Date.parse(dst.end)-Date.parse(dst.start),25*3600000);
     // Empty official scope still has a drawing lane; temporary mode never survives reload.
-    await page.locator('#plans-dialog [data-close]').click();await page.locator('#event-search').fill('没有这个活动');for(let i=0;i<4;i++)await page.locator('#next-period').click();
-    assert.equal(await page.locator('.personal-plan-bar').count(),0);assert.equal(await page.locator('.event-bar').count(),0);
+    await page.locator('#event-search').fill('没有这个活动');for(let i=0;i<4;i++)await page.locator('#next-period').click();
+    assert.equal(await page.locator('#calendar .personal-plan-bar').count(),0);assert.equal(await page.locator('#calendar .event-bar').count(),0);
     await page.locator('#month-view').click();await page.locator('.month-cell').first().waitFor();await page.locator('#rail-plans').click();await page.locator('[data-start-plan]').click();await page.locator('[data-plan-create-track]').waitFor();
     await page.setViewportSize({width:320,height:720});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.equal(await page.locator('#plan-draw-cancel').isVisible(),true);
     await page.reload();await page.locator('#rail-plans').waitFor();assert.equal(await page.locator('#plan-draw-tools').isVisible(),false);
