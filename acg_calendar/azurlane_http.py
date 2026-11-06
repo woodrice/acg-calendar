@@ -39,7 +39,7 @@ class AzurLaneHTTP:
                 if not allowed(newurl, image) or urllib.parse.urlsplit(newurl).hostname != urllib.parse.urlsplit(req.full_url).hostname:
                     raise ValueError('Wiki 跳转超出配置范围')
                 return super().redirect_request(req, fp, code, msg, headers, newurl)
-        request = urllib.request.Request(url, headers={'User-Agent': f'PlaytimeCalendar/{__version__} (https://github.com/ZhenyuFu039/acg-calendar)', 'Accept-Encoding': 'identity'})
+        request = urllib.request.Request(url, headers={'User-Agent': f'PlaytimeCalendar/{__version__} (https://github.com/woodrice/acg-calendar)', 'Accept-Encoding': 'identity'})
         limit = 5_000_000 if image else 2_000_000
         result = read_response(request, Redirect, limit=limit, timeout=20, image=image).data
         if len(result) > limit:

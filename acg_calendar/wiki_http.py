@@ -40,7 +40,7 @@ class WikiHTTP:
     def read(self, url):
         if not wiki_url(url):
             raise ValueError('Wiki 来源不在允许范围内')
-        headers = {'User-Agent': f'PlaytimeCalendar/{__version__} (local calendar; https://github.com/ZhenyuFu039/acg-calendar)', 'Accept-Encoding': 'identity', 'Accept': 'application/json,text/html,image/*;q=0.8'}
+        headers = {'User-Agent': f'PlaytimeCalendar/{__version__} (local calendar; https://github.com/woodrice/acg-calendar)', 'Accept-Encoding': 'identity', 'Accept': 'application/json,text/html,image/*;q=0.8'}
         if urllib.parse.urlsplit(url).hostname == 'zonai.skland.com':
             headers['Referer'] = 'https://wiki.skland.com/endfield/'
         request = urllib.request.Request(url, headers=headers)
