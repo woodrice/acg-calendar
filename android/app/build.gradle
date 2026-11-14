@@ -1,0 +1,77 @@
+plugins {
+    id "com.android.application"
+    id "com.chaquo.python"
+}
+
+def repo = rootProject.file("..")
+def appVersion = new File(repo, "VERSION").text.trim()
+def localProps = new Properties()
+def localFile = rootProject.file("local.properties")
+if (localFile.exists()) localFile.withInputStream { localProps.load(it) }
+// Pure-Python IANA time zone data (the "tzdata" package directory). Android has no zoneinfo
+// database that Python can read, so it ships inside the app.
+def tzdataDir = localProps.getProperty("playtime.tzdata") ?: System.getenv("PLAYTIME_TZDATA")
+
+android {
+    namespace "io.github.zhenyufu039.playtime"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "io.github.zhenyufu039.playtime"
+        minSdk 24
+        targetSdk 35
+        versionName appVersion
+        // 0.2.7 -> 207
+        versionCode appVersion.tokenize(".").collect { it as int }.with { it[0] * 10000 + it[1] * 100 + it[2] }
+    }
+
+    // One APK per ABI: arm64-v8a for phones, x86_64 for desktop emulators.
+    flavorDimensions = ["abi"]
+    productFlavors {
+        arm64 { dimension "abi"; ndk { abiFilters "arm64-v8a" } }
+        x86_64 { dimension "abi"; ndk { abiFilters "x86_64" } }
+    }
+
+    buildTypes {
+        // Test builds are signed with the local debug key; this is not a release signature.
+        debug { }
+    }
+
+    sourceSets {
+        main { assets.srcDirs += ["$buildDir/playtime-assets"] }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.13"
+        // Nothing runs Python on the build machine: no pip, no bytecode compilation.
+        pyc { src = false }
+    }
+}
+
+// The backend, web page and bundled public data, copied from the repository. Personal data,
+// logs, tests and build output are never included.
+tasks.register("stagePlaytime", Sync) {
+    if (!tzdataDir) throw new GradleException("Set playtime.tzdata in android/local.properties to the tzdata package directory")
+    into "$buildDir/playtime-assets/playtime"
+    from(repo) {
+        include "app.py", "VERSION", "LICENSE", "NOTICE.md"
+        include "acg_calendar/**", "web/**", "rules/**", "samples/**", "plugins/**"
+        exclude "**/__pycache__/**", "**/*.pyc"
+    }
+    from(tzdataDir) {
+        into "site-packages/tzdata"
+        exclude "**/__pycache__/**", "**/*.pyc"
+    }
+    // The app copies these assets to private storage only when this stamp changes.
+    doLast {
+        new File(destinationDir, "BUILD_STAMP").text = appVersion + "-" + System.currentTimeMillis()
+    }
+}
+preBuild.dependsOn "stagePlaytime"

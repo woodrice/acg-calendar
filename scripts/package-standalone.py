@@ -9,10 +9,11 @@ import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
+from release_sources import validate_frontend
 
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN = {'data', 'logs', 'dist', 'promo', '.git', '.claude', 'node_modules', '.dotnet'}
-EXTRA = ('scripts/package-standalone.py', 'scripts/windows-runtime.json', 'docs/windows-standalone.md')
+EXTRA = ('scripts/package-standalone.py', 'scripts/release_sources.py', 'scripts/windows-runtime.json', 'docs/windows-standalone.md')
 
 
 def workspace_path(path):
@@ -92,6 +93,7 @@ def main():
     timezone_archive = fetch(config['tzdata'], cache, args.fetch)
     # Only tracked paths plus these three authored files. Never enumerate real data/ or promo/.
     paths = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
+    validate_frontend(filter(None, paths), lambda name: (ROOT / name).read_text(encoding='utf-8'))
     sources = {}
     for name in sorted(set(filter(None, paths)) | set(EXTRA)):
         source = ROOT / name

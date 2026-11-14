@@ -1,23 +1,115 @@
 name: Tests
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - {os: ubuntu-latest, python: '3.11'}
+          - {os: ubuntu-latest, python: '3.14'}
+          - {os: windows-latest, python: '3.11'}
+          - {os: windows-latest, python: '3.12'}
+          - {os: windows-latest, python: '3.13'}
+          - {os: windows-latest, python: '3.14'}
+          - {os: macos-latest, python: '3.14'}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install --require-hashes -r requirements.txt
+      - run: python scripts/release_sources.py
+      - run: python -m unittest discover -s tests -p "test_*.py" -v
+
+  web:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-latest, browser: msedge}
+          - {os: ubuntu-latest, browser: chromium}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
-      - run: python -m pip install -r requirements.txt
-      - run: python -m unittest discover -s tests -p "test_*.py" -v
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: python -m pip install --require-hashes -r requirements.txt
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
+      - run: npm run check:js
+      - if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+      - if: runner.os == 'Windows'
+        run: npx playwright install msedge
+      - run: npm run test:web
+        env:
+          CALENDAR_PYTHON: python
+          CALENDAR_BROWSER: ${{ matrix.browser }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: browser-checks-${{ matrix.os }}
+          path: |
+            logs/web-regression-summary.json
+            logs/web-journey/*.png
+            logs/*-e2e/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
   desktop:
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: '10.0.x'
       - run: dotnet build desktop/Playtime.Desktop.csproj -c Release
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - run: python -m unittest discover -s tests -p test_android_bundle.py -v
+      - name: Verify Gradle wrapper
+        run: python -c "import hashlib,pathlib; assert hashlib.sha256(pathlib.Path('android/gradle/wrapper/gradle-wrapper.jar').read_bytes()).hexdigest() == '498495120a03b9a6ab5d155f5de3c8f0d986a449153702fb80fc80e134484f17'"
+      - run: python -m pip install --require-hashes --target "$RUNNER_TEMP/playtime-tzdata" -r requirements-build.txt
+      - run: sdkmanager "platforms;android-35" "build-tools;34.0.0"
+      - run: bash gradlew --no-daemon assembleArm64Debug assembleX86_64Debug lintArm64Debug
+        working-directory: android
+        env:
+          PLAYTIME_TZDATA: ${{ runner.temp }}/playtime-tzdata/tzdata
+      # CI validates debug builds; it does not publish or receive release signing keys.

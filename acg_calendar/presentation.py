@@ -9,6 +9,12 @@ from .parser import iso, stamp
 CONFIRMED = {'exact', 'confirmed', 'manual'}
 
 
+class LocalTimeError(ValueError):
+    def __init__(self, message, code):
+        super().__init__(message)
+        self.code = code
+
+
 def local_instant(value, timezone, fold=None):
     try:
         if not isinstance(value,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}',value):
@@ -25,9 +31,9 @@ def local_instant(value, timezone, fold=None):
         if aware.astimezone(dt.timezone.utc).astimezone(zone).replace(tzinfo=None) == naive:
             choices[occurrence] = aware.astimezone(dt.timezone.utc)
     if not choices:
-        raise ValueError('该当地时刻因夏令时切换不存在，请调整时间')
+        raise LocalTimeError('该当地时刻因夏令时切换不存在，请调整时间', 'nonexistent_time')
     if len(set(choices.values())) > 1 and fold is None:
-        raise ValueError('该当地时刻因夏令时重复，请选择较早或较晚的一次')
+        raise LocalTimeError('该当地时刻因夏令时重复，请选择较早或较晚的一次', 'ambiguous_time')
     if fold is not None and (type(fold) is not int or fold not in (0, 1)):
         raise ValueError('夏令时重复时刻选项无效')
     return iso(choices.get(fold, next(iter(choices.values()))))

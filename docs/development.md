@@ -1,6 +1,6 @@
-# 开发文档 · V0.2.4
+# 开发文档
 
-“游时 Playtime”是可本地部署的游戏活动日历，由来源适配器读取公开信息，转换为 JSON 后交给统一时间轴、日历和提醒系统。不依赖 AI API 或游戏账号。V0.2.4 提供个人规划、备份恢复、插件管理、提醒范围、手机布局及保守复查；架构见 [architecture.md](architecture.md)，插件见 [plugins.md](plugins.md)，升级和当前边界见 [发布说明](releases/v0.2.4.md)。
+“游时 Playtime”是可本地部署的游戏活动日历，由来源适配器读取公开信息，转换为 JSON 后交给统一时间轴、日历和提醒系统。不依赖 AI API 或游戏账号。提供个人规划、备份恢复、插件管理、提醒范围、手机布局及保守复查；架构见 [architecture.md](architecture.md)，插件见 [plugins.md](plugins.md)，本版发布说明见 [V0.3.25](releases/v0.3.25.md)，改动见 [更新记录](../CHANGELOG.md)。本机安全边界与验证范围见 [审计记录](security-compatibility-audit-2026-11-13.md)。
 
 插件 API 保持 1，个人状态与公告快照分开保存；碧蓝航线自动头图匹配及有限历史样本的验证见 [回测说明](azurlane-artwork-alignment.md)。来源和素材声明继续适用。
 

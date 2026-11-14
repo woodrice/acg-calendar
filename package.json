@@ -1,0 +1,11 @@
+{
+  "name": "playtime-calendar-dev",
+  "private": true,
+  "description": "Local checks for Playtime; the application frontend has no production npm dependencies.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "check:js": "node scripts/check-js.cjs",
+    "test:web": "node scripts/test-web.cjs"
+  },
+  "devDependencies": { "playwright": "1.62.1" }
+}

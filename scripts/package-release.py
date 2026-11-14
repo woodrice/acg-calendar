@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import zipfile
+from release_sources import validate_frontend
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,6 +30,7 @@ def main():
     subprocess.run(['git', 'archive', '--format=zip', '--output', str(source_zip), args.ref], cwd=ROOT, check=True)
     forbidden = {'.git', '.claude', 'data', 'logs', 'dist', 'promo', 'node_modules'}
     with zipfile.ZipFile(source_zip) as source:
+        validate_frontend(source.namelist(), lambda name: source.read(name).decode('utf-8'))
         for item in source.infolist():
             if not (stage / item.filename).resolve().is_relative_to(stage) or item.filename.split('/')[0] in forbidden:
                 raise ValueError('Non-release content in source tree: ' + item.filename)

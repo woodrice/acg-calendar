@@ -213,14 +213,22 @@ class WorkspaceService:
 
     def _plan(self, payload, key=None):
         allowed = {"title", "start", "end", "timezone", "game_id", "event_id", "notes", "local_start", "local_end", "fold_start", "fold_end", "move_minutes"}
+        request_id = payload.get('request_id')
+        if 'request_id' in payload and not key:
+            if not isinstance(request_id, str) or not re.fullmatch(r'[0-9a-f]{32}', request_id):
+                raise ValueError('计划请求 ID 无效')
+            payload = {k:v for k,v in payload.items() if k != 'request_id'}
         if set(payload) - allowed:
             raise ValueError("不支持的个人计划字段")
-        existing = next((p for p in self.store.plans() if p["id"] == key), None)
+        plan_id = key or ('plan-' + request_id if request_id else None)
+        existing = next((p for p in self.store.plans() if p["id"] == plan_id), None)
+        if request_id and existing:
+            return existing  # A retried create never overwrites subsequent edits.
         if key and not existing:
             raise LookupError("个人计划不存在")
         from .presentation import local_instant
         fields = {k:v for k,v in payload.items() if k not in {'local_start','local_end','fold_start','fold_end','move_minutes'}}
-        plan = {**(existing or {"schema_version": 1, "id": "plan-" + uuid.uuid4().hex, "game_id": None, "event_id": None, "notes": "", "timezone": "UTC"}), **fields}
+        plan = {**(existing or {"schema_version": 1, "id": plan_id or "plan-" + uuid.uuid4().hex, "game_id": None, "event_id": None, "notes": "", "timezone": "UTC"}), **fields}
         for role in ('start','end'):
             if 'local_'+role in payload:
                 if role in payload:

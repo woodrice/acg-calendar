@@ -231,7 +231,14 @@ public sealed partial class CalendarWindow : Window
     void Log(string? line)
     {
         if (line == null) return;
-        lock (logLock) try { Directory.CreateDirectory(Path.Combine(root, "logs")); File.AppendAllText(Path.Combine(root, "logs", "desktop.log"), line + Environment.NewLine); } catch { }
+        lock (logLock) try
+        {
+            string folder = Path.Combine(root, "logs"), path = Path.Combine(folder, "desktop.log");
+            Directory.CreateDirectory(folder);
+            if (File.Exists(path) && new FileInfo(path).Length >= 2 * 1024 * 1024) File.Move(path, path + ".1", true);
+            File.AppendAllText(path, (line.Length > 4096 ? line[..4096] + "…" : line) + Environment.NewLine);
+        }
+        catch { }
     }
     async Task Refresh()
     {

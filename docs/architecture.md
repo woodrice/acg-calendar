@@ -1,5 +1,7 @@
 # 模块化架构（插件 API 1）
 
+网页的 `journey.js` 只拥有当前页面的任务来源栈、滚动/焦点恢复与草稿离开确认。Planner、活动详情和设置注册各自的草稿检查与返回刷新；个人数据仍经现有 HTTP API 保存，新计划复用 `request_id` 去重。临时浏览器历史不进入插件、数据库或备份；安卓外壳继续拥有自己的路由。行为与验证见 [网页任务往返](web-journey.md)。
+
 界面动效属于宿主呈现层：`settings.ui_motion` 为可选的 `auto / standard / reduced / off`，旧设置默认 `auto`，通过原设置接口校验和持久化。网页 `motion.js` 与桌面 `CalendarWindow.Motion.cs` 不拥有排序、同步阶段或计划数据；真实状态先提交成功，再提供视觉反馈。窗口贴边动画继续由原控制器管理，插件 API 和公告格式不变。详见 [动效说明](motion-feedback.md)。
 
 本次升级保留原数据库、活动 ID、完成状态、备注、手动校正与提醒记录。新增表通过 `CREATE TABLE IF NOT EXISTS` 创建；个人配置采用独立的版本号，和软件版本分开。

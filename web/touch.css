@@ -1,0 +1,32 @@
+/* Phones and other narrow touch screens: the timeline behaves like a native list.
+   - Horizontal swipes scroll the dates; vertical swipes always reach the page.
+   - Rows stay short. Tapping a row opens its detail, where starring and completing are
+     full-size buttons; the row itself shows the state (★ in the title, the completed style).
+   - Reordering uses a slim grip down the row's left edge (long-press, then drag). */
+@media (max-width:850px) and (pointer:coarse){
+  /* `contain` on both axes stopped a vertical swipe at a scroller that only scrolls sideways. */
+  #calendar,.timeline-scroll{overscroll-behavior:contain auto}
+
+  .timeline-row,.timeline-row .bar-cell{min-height:52px}
+  .event-name-cell>.event-name{min-height:52px;padding:7px 6px 7px 24px;gap:6px}
+  .event-name-cell>.event-name .event-name-text{padding-right:0;min-width:0}
+  .event-name-text strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+  .event-name-text small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .event-row-tools>.event-star,.event-row-tools>.event-done{display:none}
+  .event-row-tools{position:absolute;left:calc(var(--tree-depth,0)*12px);top:0;bottom:0;width:22px;padding:0;display:block;z-index:6}
+  .event-row-tools>.event-order-handle{display:flex;align-items:center;justify-content:center;width:22px;height:100%;min-height:44px;border:0;border-radius:0;background:transparent;color:var(--muted);font-size:11px;letter-spacing:-2px;touch-action:none}
+  .event-row-tools>.event-order-handle:active{background:var(--panel-alt)}
+
+  /* Bars with artwork: a shorter picture that fades out early, and the dates to its right with a
+     soft halo in the page colour, so the picture stays visible and the dates readable. On a short
+     bar the dates may run past the bar's end rather than lose the end date; the picture stays inside. */
+  .timeline-row .event-bar.has-art{overflow:visible}
+  .timeline-row .bar-art{width:min(112px,100%);opacity:.9;-webkit-mask-image:linear-gradient(to right,#000 30%,transparent 100%);mask-image:linear-gradient(to right,#000 30%,transparent 100%)}
+  .timeline-row .event-bar.has-art .bar-label{display:inline-block;width:auto;max-width:none;margin-left:68px;padding:0 4px;white-space:nowrap;background:none;text-shadow:0 0 2px var(--paper),0 0 4px var(--paper),0 1px 3px var(--paper)!important} /* design.css clears .bar-label shadows with !important */
+
+  /* Parent/child folding keeps a single short line; dates of each stage are in the detail. */
+  .family-controls{padding:0 6px 4px 24px}
+  .family-controls>.text-button{min-height:32px;max-width:100%;padding:0;font-size:11px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .family-controls>.family-deadlines{display:none}
+}

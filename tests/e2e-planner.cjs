@@ -2,17 +2,17 @@
 const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
-const base='http://127.0.0.1:8803';
 (async()=>{
+  const port=await require('./free-port.cjs')(),base='http://127.0.0.1:'+port;
   const output=path.resolve('logs/planner-e2e'),dir=path.join(output,'data-'+Date.now());
   await fs.mkdir(dir,{recursive:true});await fs.cp('examples/plugins/sample-game',path.join(dir,'plugins/sample-game'),{recursive:true});
-  const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port','8803','--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
+  const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
   try{
     for(let i=0;i<50;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===49)throw Error('Server failed');await new Promise(r=>setTimeout(r,200));}
     const state=async()=>await(await fetch(base+'/api/state')).json();let data=await state();
     const request=async(url,method,body)=>{const r=await fetch(base+url,{method,headers:{'Content-Type':'application/json','X-Calendar-Token':data.csrf_token},body:JSON.stringify(body)});assert.equal(r.status,200);return r.json();};
     const source=structuredClone(data.events.filter(e=>e.game==='sample-game'));
-    browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1050},locale:'zh-CN',timezoneId:'America/New_York'}),errors=[];
+    browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1050},locale:'zh-CN',timezoneId:'America/New_York'}),errors=[];
     page.on('pageerror',e=>errors.push(e.message));
     await page.clock.setFixedTime(new Date('2026-10-27T20:00:00Z'));
     await page.goto(base);await page.locator('#game-select option[value="sample-game"]').waitFor({state:'attached'});

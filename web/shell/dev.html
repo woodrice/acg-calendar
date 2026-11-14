@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- Development harness for the Android shell (M0): fixed-date sample data, no backend.
+     ?state=loading|empty|error shows those states; ?fail=<action> makes one action fail; ?hold=<action> keeps it pending until __source.release(ok);
+     ?plain=1 loads the shell without the Android marker (it must stay inert). -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>游时 · 安卓外壳开发页</title>
+<link rel="stylesheet" href="shell.css">
+<script>
+  const q=new URLSearchParams(location.search);
+  if(!q.has('plain'))document.documentElement.dataset.shell='android';
+</script>
+<script src="fixtures.js"></script>
+<script src="shell.js"></script>
+</head>
+<body style="margin:0">
+<div id="pt-shell"></div>
+<p id="plain-page" hidden>普通网页：外壳未启用。</p>
+<script>
+  const params=new URLSearchParams(location.search);
+  const source=PlaytimeShellFixtures.create({mode:params.get('state')||'ready',failAction:params.get('fail'),holdAction:params.get('hold'),planZone:params.get('zone'),stalePlan:params.has('stale')});
+  window.__source=source;
+  if(!PlaytimeShell.start({root:document.getElementById('pt-shell'),source}))document.getElementById('plain-page').hidden=false;
+</script>
+</body>
+</html>

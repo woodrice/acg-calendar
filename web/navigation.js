@@ -61,8 +61,8 @@ window.PlaytimeUX=(()=>{
     document.addEventListener('click',async e=>{
       const b=e.target.closest('button');if(!b)return;
       if(b.id==='rail-plans')$('#plans-button').click();
-      if(b.id==='rail-calendar'&&$('dialog[open]'))$('dialog[open]').close();
-      if(b.id==='notification-settings'){$('#preferences-dialog').close();H.openReminders();rules.open=true;}
+      if(b.id==='rail-calendar'&&$('dialog[open]'))window.PlaytimeJourney.leaveAll(()=>window.PlaytimeJourney.clear());
+      if(b.id==='notification-settings'){H.openReminders();rules.open=true;}
       if(b.id==='inbox-button')rules.open=false;
       if(b.id==='source-details')$('#data-button').click();
       if(b.id==='filter-button'){

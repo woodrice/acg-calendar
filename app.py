@@ -6,6 +6,7 @@ import argparse
 import datetime as dt
 import hashlib
 from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
@@ -454,17 +455,62 @@ class Application:
         self.reminders.tick()
 
 
-def handler_for(application):
+def handler_for(application, session=None):
+    """A host that embeds the server (the Android app) passes a per-launch session secret;
+    every request, reads included, must then carry it in the playtime_session cookie, so other
+    apps on the device cannot read personal data even if they find the loopback port."""
     class Handler(BaseHTTPRequestHandler):
         server_version = "ACGCalendar/" + __version__
 
+        def setup(self):
+            super().setup()
+            # This is a loopback service: incomplete headers/bodies must not hold a thread forever.
+            self.connection.settimeout(10)
+
+        @staticmethod
+        def token_matches(supplied, expected):
+            try:
+                return secrets.compare_digest(supplied, expected)
+            except TypeError:
+                # HTTP fields can contain Latin-1. compare_digest(str, str) only accepts ASCII.
+                return False
+
         def log_message(self, message, *args):
-            if args and str(args[1] if len(args) > 1 else "") != "200":
-                super().log_message(message, *args)
+            status = str(args[1]) if len(args) > 1 and str(args[1]).isdigit() else "error"
+            if status == "304" or (status.isdigit() and 200 <= int(status) < 300):
+                return
+            try:
+                path = urllib.parse.urlsplit(getattr(self, "path", "")).path
+            except ValueError:
+                path = "<invalid-url>"
+            # Never log request bodies, cookies, tokens or URL query strings.
+            safe = lambda value: str(value).encode("unicode_escape").decode("ascii")[:300]
+            super().log_message("%s %s %s", safe(getattr(self, "command", "HTTP")), safe(path), status)
 
         def valid_host(self):
-            host = self.headers.get("Host", "").split(":")[0].lower()
-            return host in {"127.0.0.1", "localhost"}
+            hosts = self.headers.get_all("Host", [])
+            if len(hosts) != 1:
+                return False
+            try:
+                host = urllib.parse.urlsplit("http://" + hosts[0])
+                return (host.hostname in {"127.0.0.1", "localhost"} and not host.username and not host.password
+                        and host.path == "" and not host.query and not host.fragment
+                        and host.port in {None, self.server.server_port} and self.valid_session())
+            except ValueError:
+                return False
+
+        def valid_origin(self):
+            origins = self.headers.get_all("Origin", [])
+            return len(origins) <= 1 and (not origins or origins[0] == "http://" + self.headers.get("Host", ""))
+
+        def valid_session(self):
+            if session is None:
+                return True
+            try:
+                cookie = SimpleCookie(self.headers.get("Cookie", "")).get("playtime_session")
+            except CookieError:
+                return False
+            return cookie is not None and self.token_matches(cookie.value, session)
 
         def send(self, data, status=200, content_type="application/json; charset=utf-8", filename=None, cache_control="no-store", etag=None):
             encoded = json.dumps(data, ensure_ascii=False).encode("utf-8") if not isinstance(data, bytes) else data
@@ -500,8 +546,10 @@ def handler_for(application):
         def do_GET(self):
             if not self.valid_host():
                 return self.send({"error": "仅允许本机访问"}, 403)
-            path = urllib.parse.urlsplit(self.path).path
             try:
+                path = urllib.parse.urlsplit(self.path).path
+                if path.startswith("/api/") and (not self.valid_origin() or self.headers.get("Sec-Fetch-Site") == "cross-site"):
+                    return self.send({"error": "请求来源不匹配"}, 403)
                 game = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("game", [application.store.settings()["active_game"]])[0]
                 if game not in application.registry.ids | {"all", "selected"}:
                     game = "all" if "game" not in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query) else game
@@ -553,9 +601,11 @@ def handler_for(application):
                 assets = {"/": "index.html", "/app.js": "app.js", "/workspace.js": "workspace.js", "/styles.css": "styles.css", "/favicon.svg": "favicon.svg", "/assets/oroberyl.png": "assets/oroberyl.png", "/assets/arknights-logo.png": "assets/arknights-logo.png", "/assets/endfield-icon-zh.svg": "assets/endfield-icon-zh.svg"}
                 assets.update({"/customize.js": "customize.js", "/customize.css": "customize.css", "/design.css": "design.css", "/assets/arknights-app-icon.png": "assets/arknights-app-icon.png", "/assets/endfield-app-icon.png": "assets/endfield-app-icon.png"})
                 assets.update({'/planner.js':'planner.js', '/planner.css':'planner.css', '/plan-drawing.js':'plan-drawing.js'})
+                assets['/journey.js'] = 'journey.js'
                 assets.update({'/navigation.js':'navigation.js', '/ux.css':'ux.css'})
-                assets.update({'/motion.js':'motion.js', '/motion.css':'motion.css'})
+                assets.update({'/motion.js':'motion.js', '/motion.css':'motion.css', '/touch.css':'touch.css'})
                 assets['/timeline-order.js'] = 'timeline-order.js'
+                assets.update({'/shell-source.js': 'shell-source.js', '/shell/shell.js': 'shell/shell.js', '/shell/shell.css': 'shell/shell.css'})
                 if path not in assets:
                     return self.send({"error": "页面不存在"}, 404)
                 file = ROOT / "web" / assets[path]
@@ -582,21 +632,29 @@ def handler_for(application):
         def mutate(self):
             if not self.valid_host():
                 return self.send({"error": "仅允许本机访问"}, 403)
-            origin = self.headers.get("Origin")
-            if origin and origin not in {"http://" + self.headers.get("Host", "")}:
+            if not self.valid_origin() or self.headers.get("Sec-Fetch-Site") == "cross-site":
                 return self.send({"error": "请求来源不匹配"}, 403)
-            if not secrets.compare_digest(self.headers.get("X-Calendar-Token", ""), application.csrf):
+            if not self.token_matches(self.headers.get("X-Calendar-Token", ""), application.csrf):
                 return self.send({"error": "会话已变化，请刷新页面"}, 403)
             try:
                 path = urllib.parse.urlsplit(self.path).path
+                if self.headers.get("Transfer-Encoding") is not None or len(self.headers.get_all("Content-Length", [])) > 1:
+                    raise ValueError("请求体长度不明确，不支持 Transfer-Encoding")
                 length = int(self.headers.get("Content-Length", "0"))
                 limit = backup.MAX_BYTES if path in {"/api/backups/restore", "/api/backups/preview"} else 512_000 if path == "/api/workspace" else 16_000
                 if not 0 <= length <= limit:
                     return self.send({"error": "请求过大"}, 413)
                 try:
-                    payload = json.loads(self.rfile.read(length) or b"{}")
-                except (UnicodeDecodeError, json.JSONDecodeError):
+                    raw = self.rfile.read(length)
+                    if len(raw) != length:
+                        raise ValueError("请求体未完整接收")
+                    def invalid_constant(value):
+                        raise ValueError("JSON 不支持 NaN 或 Infinity")
+                    payload = json.loads(raw or b"{}", parse_constant=invalid_constant)
+                except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
                     raise ValueError("请求内容不是有效的 JSON") from None
+                except TimeoutError:
+                    return self.send({"error": "接收请求体超时"}, 408)
                 if not isinstance(payload, dict):
                     raise ValueError("请求应为 JSON 对象")
                 if self.command == "DELETE":
@@ -640,17 +698,23 @@ def handler_for(application):
                     game = payload.get("game", application.store.settings()["active_game"])
                     if not isinstance(game, str) or game not in application.registry.ids | {"all", "selected"}:
                         raise ValueError("不支持的游戏")
+                    requested, accepted = [], []
                     for key, collector in application.collectors.items():
                         if game in {key, "all"} or (game == "selected" and key in application.workspace.get()["view"]["selected_games"]):
-                            collector.start()
+                            requested.append(key)
+                            if collector.start():
+                                accepted.append(key)
+                    return self.send({**application.state(), "sync_request": {"requested": requested, "accepted": accepted}})
                 elif path == "/api/network":
                     application.network.update(payload)
                 elif path == "/api/workspace":
                     application.workspace.update(payload)
                 elif path == "/api/plans":
-                    application.workspace.plan(payload)
+                    plan = application.workspace.plan(payload)
+                    return self.send({**application.state(), "saved_plan": plan["id"]})
                 elif match := re.fullmatch(r"/api/plans/(plan-[a-f0-9]{32})", path):
-                    application.workspace.plan(payload, match.group(1))
+                    plan = application.workspace.plan(payload, match.group(1))
+                    return self.send({**application.state(), "saved_plan": plan["id"]})
                 elif path == "/api/settings":
                     application.update_settings(payload)
                 elif path == "/api/notifications/test":
@@ -684,7 +748,8 @@ def handler_for(application):
             except LookupError as error:
                 return self.send({"error": str(error)}, 404)
             except (ValueError, TypeError, KeyError) as error:
-                return self.send({"error": str(error)}, 400)
+                code = getattr(error, 'code', None)
+                return self.send({"error": str(error), **({"code": code} if code else {})}, 400)
 
     return Handler
 

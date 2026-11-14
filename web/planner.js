@@ -1,9 +1,11 @@
 'use strict';
 /* Host-only linked views and personal plans. No provider-specific selectors. */
 window.PlaytimePlanner = (() => {
-  let H, editing=null, editingPlan=null, editingFromDrag=false, managerSignature=null, focusQueue=Promise.resolve(), inspectedDay=null, dayTab='deadlines', saving=false;
+  let H, editing=null, editingPlan=null, editingFromDrag=false, managerSignature=null, focusQueue=Promise.resolve(), inspectedDay=null, dayTab='deadlines', saving=false, planBaseline='', requestId=null;
   const $=s=>document.querySelector(s), W=window.PlaytimeWorkspace;
   const D=window.PlaytimePlanDrawing;
+  const J=window.PlaytimeJourney;
+  const formValues=()=>JSON.stringify([...($('#plan-form')?.querySelectorAll('input,select,textarea')||[])].map(n=>[n.id,n.value]));
   const E=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const state=()=>H.state(), meta=()=>state()?.presentation||{}, view=()=>W.view;
   const dateKey=serial=>new Date(Math.floor(serial)*86400000).toISOString().slice(0,10);
@@ -16,7 +18,7 @@ window.PlaytimePlanner = (() => {
   function densityButton(serial,month=false,axis={}){
     const day=dateKey(serial),d=density(day),date=axis.fit?(axis.label?Number(day.slice(5,7))+'/'+Number(day.slice(8)):''):(Number(day.slice(8))===1?Number(day.slice(5,7))+'/1':Number(day.slice(8)));
     const tick=month?'':`<span class="axis-date" aria-label="${day}">${date}</span>`;
-    if(!d.rows.length)return tick+(month?'<span class="month-quiet">无明确截止</span>':'');
+    if(!d.rows.length)return tick;
     return tick+`<button type="button" class="density-day has-deadlines ${inspectedDay===day?'date-inspected':''}" data-deadline-day="${day}" aria-label="${day}，活动截止 ${d.activity} 项，兑换截止 ${d.exchange} 项">${d.activity?`<span>${month?'活动':'截止'} ${d.activity}</span>`:''}${d.exchange?`<span class="density-exchange">兑换 ${d.exchange}</span>`:''}</button>`;
   }
   // Every focus write (a pick, a clear, a view reset) runs in request order, so an older write
@@ -65,9 +67,10 @@ window.PlaytimePlanner = (() => {
     const html=`<div class="plans-module-head"><button type="button" class="text-button plans-fold" data-plans-fold aria-expanded="${open}"><strong>◇ 个人规划 · ${rows.length} 项</strong></button>${!open&&next?`<span class="plans-next">下一项：${E(next.title)} · ${E(H.format(next.start))}</span>`:''}<button type="button" class="text-button" data-plans-manager>管理 / 新建 ↗</button></div>${open?rows.map(planRow).join(''):''}`;
     if(el._html!==html){el.innerHTML=html;el._html=html;}
   }
-  function planBars(lo,hi){return scopedPlans().filter(p=>H.civil(p.start)<hi&&H.civil(p.end)>lo).map(p=>{
+  function planBars(lo,hi,{interactive=true,embedded=false}={}){return scopedPlans().filter(p=>H.civil(p.start)<hi&&H.civil(p.end)>lo).map(p=>{
     const a=Math.max(lo,H.civil(p.start)),b=Math.min(hi,H.civil(p.end));
-    return `<div data-row-plan="${E(p.id)}" class="timeline-row personal-plan-row"><button type="button" class="event-name" data-plan="${E(p.id)}"><span class="event-name-text"><strong>◇ ${E(p.title)}</strong><small>个人计划 · 可编辑 / 移动</small></span></button><div class="bar-cell plan-track"><button type="button" class="personal-plan-bar" data-plan="${E(p.id)}" style="left:${(a-lo)/(hi-lo)*100}%;width:${(b-a)/(hi-lo)*100}%" title="${E(p.title+' · '+H.format(p.start,{year:true})+' → '+H.format(p.end,{year:true}))}"><span>◇ ${E(p.title)}</span></button></div><button type="button" class="deadline-cell" data-plan="${E(p.id)}"><strong>${E(H.format(p.start))}</strong><span>→ ${E(H.format(p.end))}</span></button><span class="reward-cell">个人安排</span></div>`;
+    const tag=interactive?'button':'div',attrs=interactive?`type="button" data-plan="${E(p.id)}"`:'';
+    return `<div data-row-plan="${E(p.id)}" class="timeline-row personal-plan-row"><${tag} ${attrs} class="event-name"><span class="event-name-text"><strong>◇ ${E(p.title)}</strong><small>${interactive?(embedded?'个人计划 · 点击编辑':'个人计划 · 可编辑 / 移动'):'个人计划'}</small></span></${tag}><div class="bar-cell plan-track"><${tag} ${attrs} class="personal-plan-bar" style="left:${(a-lo)/(hi-lo)*100}%;width:${(b-a)/(hi-lo)*100}%" title="${E(p.title+' · '+H.format(p.start,{year:true})+' → '+H.format(p.end,{year:true}))}"><span>◇ ${E(p.title)}</span></${tag}></div><${tag} ${attrs} class="deadline-cell"><strong>${E(H.format(p.start))}</strong><span>→ ${E(H.format(p.end))}</span></${tag}>${embedded?'':'<span class="reward-cell">个人安排</span>'}</div>`;
   }).join('');}
   function monthPlans(serial){const rows=scopedPlans().filter(p=>H.civil(p.start)<serial+1&&H.civil(p.end)>serial);return rows.length?`<button type="button" class="month-plan" data-day="${serial}">◇ 计划 ${rows.length}</button>`:'';}
   function agendaPlans(serial){return `<div class="agenda-plans"><strong>个人安排</strong>${scopedPlans().filter(p=>H.civil(p.start)<serial+1&&H.civil(p.end)>serial).map(planRow).join('')}<button class="button button-small" type="button" data-new-plan-day="${dateKey(serial)}">＋ 安排这一天的游玩</button></div>`;}
@@ -105,13 +108,13 @@ window.PlaytimePlanner = (() => {
     const items=covered.map(({event:e,label})=>`<li><button type="button" class="text-button" data-event="${E(e.id)}">${E(W.game(e.game)?.short_name||e.game)} · ${E(e.title)} ↗</button><small>${E(label)} · ${E(H.format(e.start.at,{year:true}))} → ${e.time_kind==='point'?'更新节点':e.end.at?E(H.format(e.end.at,{year:true})):'结束待定'}</small></li>`).join('');
     return `<article class="plan-summary" data-plan-summary="${E(p.id)}"><header><button type="button" class="plan-summary-title" data-plan="${E(p.id)}"><strong>◇ ${E(p.title)}</strong><span>编辑 / 移动 ↗</span></button></header><p class="plan-summary-time">${E(H.format(p.start,{year:true}))} → ${E(H.format(p.end,{year:true}))}</p><p class="help-text">${E(W.game(p.game_id)?.name||p.game_id||'未限定游戏')} · 计划时区 ${E(p.timezone)}${p.event_id?' · 手动关联：'+E(linked?.title||'来源活动已不可用'):''}</p>${p.notes?`<p class="plan-summary-notes">${E(p.notes)}</p>`:''}<details class="plan-coverage"><summary>期间可参与活动 · ${covered.length} 项${p.event_id||p.game_id?'（手动关联的排在前面）':''}</summary>${items?'<ul>'+items+'</ul>':'<p class="help-text">当前显示的游戏、日期和筛选范围内没有重叠活动；规划仍完整保存。</p>'}</details></article>`;
   }
-  function closeDialogs(){for(const d of document.querySelectorAll('dialog[open]'))d.close();}
+  function closeDialogs(){J.clear();}
   function localValue(at,timezone){const p=H.dateParts(at,timezone);return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
   function editor(id=null,{day=null,eventId=null,selection=null}={}){
     D.stop();
-    const p=id?state().plans.find(p=>p.id===id):null;if(id&&!p)return;
+    const p=id?state().plans.find(p=>p.id===id):null;if(id&&!p){H.toast('这条个人计划已不在本机',true);return;}
     if(!p&&!day&&!selection)day=view().focus.date;
-    editing=id;editingPlan=p;editingFromDrag=!!selection;closeDialogs();const event=state().events.find(e=>e.id===eventId),tz=p?.timezone||selection?.timezone||H.zone();
+    editing=id;editingPlan=p;editingFromDrag=!!selection;requestId=J.newId();const event=state().events.find(e=>e.id===eventId),tz=p?.timezone||selection?.timezone||H.zone();
     const next=new Date(Math.ceil(Date.now()/1800000)*1800000),start=p?.start||next.toISOString(),end=p?.end||new Date(next.valueOf()+3600000).toISOString();
     const games=state().games.map(g=>`<option value="${E(g.id)}">${E(g.name)}</option>`).join('');
     const foldSelect=role=>`<select id="plan-fold-${role}" aria-label="${role==='start'?'开始':'结束'}重复时刻"><option value="">自动（重复时提示选择）</option><option value="0">重复时取较早一次</option><option value="1">重复时取较晚一次</option></select>`;
@@ -119,7 +122,7 @@ window.PlaytimePlanner = (() => {
     $('#plan-editor-content').innerHTML=`<form id="plan-form"><p class="help-text">以分钟为粒度。此安排不会更改活动公告或截止日期。保存后按显示时区换算。</p><label class="field-label" for="plan-title">计划名称</label><input id="plan-title" required maxlength="200" value="${E(p?.title||event?.title||'')}"><div class="plan-fields"><label>开始（当地时间）<input id="plan-start" required type="datetime-local" step="60" value="${day?day+'T19:00':localValue(start,tz)}">${foldSelect('start')}</label><label>结束（当地时间）<input id="plan-end" required type="datetime-local" step="60" value="${day?day+'T20:00':localValue(end,tz)}">${foldSelect('end')}</label></div><label class="field-label" for="plan-timezone">计划时区（IANA）</label><input id="plan-timezone" required list="plan-zones" value="${E(tz)}"><datalist id="plan-zones">${['Asia/Shanghai','Asia/Tokyo','America/New_York','Europe/London','UTC'].map(t=>`<option value="${t}">`).join('')}</datalist><p class="help-text">时区用于解释上方当地时间；修改时区后保持输入的钟面时间。夏令时不存在或重复的时刻会明确提示。</p><div class="plan-fields"><label>关联游戏（可选）<select id="plan-game"><option value="">不关联</option>${games}${p?.game_id&&!W.game(p.game_id)?`<option value="${E(p.game_id)}">${E(p.game_id)}（已卸载，保留）</option>`:''}</select></label><label>关联活动（可选）<select id="plan-event"></select></label></div><label class="field-label" for="plan-notes">备注</label><textarea id="plan-notes" maxlength="2000">${E(p?.notes||'')}</textarea><p id="plan-error" class="form-error" role="alert" hidden></p><button class="button button-primary" type="submit">保存个人计划</button>${p?`<fieldset class="plan-moves"><legend>移动整段计划（保持持续时长）</legend>${[[-1440,'前移 24 小时'],[-60,'前移 1 小时'],[60,'后移 1 小时'],[1440,'后移 24 小时']].map(([v,l])=>`<button type="button" class="button button-small" data-move-plan="${v}">${l}</button>`).join('')}<p class="help-text">移动会一并保存当前输入；跨夏令时时按实际经过时间移动。</p></fieldset><details class="plan-delete"><summary>删除计划</summary><button type="button" class="button" data-delete-plan>确认删除这条个人计划</button></details>`:''}</form>`;
     if(selection){$('#plan-start').value=selection.local_start;$('#plan-end').value=selection.local_end;$('#plan-form .help-text').textContent='已从时间轴选择时段。填写名称即可保存，也可微调时间；夏令时会在保存时校验。';}
     $('#plan-game').value=p?.game_id||event?.game||(selection&&W.game(H.game())?H.game():'');eventOptions(p?.event_id||eventId);
-    H.openDialog('#plan-editor-dialog');
+    planBaseline=formValues();H.openDialog('#plan-editor-dialog');
   }
   function eventOptions(selected=null){const g=$('#plan-game').value,rows=state().events.filter(e=>!g||e.game===g),label=e=>(W.game(e.game)?.short_name||e.game)+' · '+e.title,seen=new Map();for(const e of rows)seen.set(label(e),(seen.get(label(e))||0)+1);$('#plan-event').innerHTML='<option value="">不关联</option>'+rows.map(e=>`<option value="${E(e.id)}">${E(label(e)+(seen.get(label(e))>1?' · '+(e.version_name||'')+(e.start.at?' '+H.format(e.start.at,{dateOnly:true}):''):''))}</option>`).join('');if(selected&&!state().events.some(e=>e.id===selected))$('#plan-event').insertAdjacentHTML('beforeend',`<option value="${E(selected)}">来源活动已不可用（保留关联）</option>`);$('#plan-event').value=selected||'';}
   async function save(move=null){
@@ -132,20 +135,39 @@ window.PlaytimePlanner = (() => {
       else if(fold!=='')body['fold_'+role]=Number(fold);
     }
     if(move!==null)body.move_minutes=move;
-    const submit=$('#plan-form button[type=submit]'),buttons=[...$('#plan-form').querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+    if(!editing)body.request_id=requestId;
+    const submit=$('#plan-form button[type=submit]'),buttons=[...$('#plan-form').querySelectorAll('button,input,select,textarea')];buttons.forEach(b=>b.disabled=true);
+    const caption=submit.textContent;submit.textContent='保存中…';
     saving=true;
     const form=$('#plan-form'),id=editing,fromDrag=editingFromDrag,before=new Set(state().plans.map(p=>p.id));
     try{
       const data=await H.api('/api/plans'+(id?'/'+id:''),id?'PATCH':'POST',body),same=form===$('#plan-form')&&$('#plan-editor-dialog').open;
-      if(same&&fromDrag){const newPlan=data.plans.find(p=>!before.has(p.id));if(newPlan)window.PlaytimeMotion.planSaved(newPlan.id);$('#plan-editor-dialog').close();}
+      const savedId=data.saved_plan||id||data.plans.find(p=>!before.has(p.id))?.id;
+      if(same&&fromDrag&&savedId)window.PlaytimeMotion.planSaved(savedId);
       H.applyState(data);
       if(!same)return;
-      if(move!==null)editor(id);
-      else if(fromDrag){H.toast('个人计划已放入时间轴');}
-      else{$('#plan-editor-dialog').close();manager();H.toast(id?'个人计划已更新':'个人计划已保存');}
+      if(move!==null){editor(id);H.toast('已移动并保存个人计划');}
+      else{
+        planBaseline=formValues();
+        const parent=J.parent;
+        if(parent?.id==='deadlines-dialog')dayTab='activities';
+        J.close($('#plan-editor-dialog'));
+        H.toast(fromDrag?'个人计划已放入时间轴':id?'个人计划已更新':'个人计划已保存');
+        if(parent&&savedId){
+          parent.querySelector('[data-plan-result]')?.remove();
+          const result=document.createElement('div');result.className='plan-result';result.dataset.planResult='';result.setAttribute('role','status');
+          result.innerHTML=`<span>${id?'个人计划已更新':'个人计划已保存'}</span><button type="button" class="text-button" data-saved-plan="${E(savedId)}">查看计划 ↗</button><button type="button" class="text-button" data-dismiss-plan-result aria-label="收起保存结果">×</button>`;
+          parent.querySelector('.dialog-body')?.prepend(result);
+        }
+        if(savedId)requestAnimationFrame(()=>{
+          const scope=parent?.open?parent:document.querySelector('#calendar');
+          const row=scope?.querySelector(`[data-plan-summary="${CSS.escape(savedId)}"],[data-plan="${CSS.escape(savedId)}"],[data-row-plan="${CSS.escape(savedId)}"]`);
+          row?.scrollIntoView({block:'nearest'});(row?.matches('button')?row:row?.querySelector('button'))?.focus({preventScroll:true});
+        });
+      }
     }
     catch(e){if(form===$('#plan-form')){$('#plan-error').textContent=e.message;$('#plan-error').hidden=false;}}
-    finally{saving=false;if(submit.isConnected)buttons.forEach(b=>b.disabled=false);}
+    finally{saving=false;if(submit.isConnected){submit.textContent=caption;buttons.forEach(b=>b.disabled=false);}}
   }
   function paintDay(){
     if(!inspectedDay)return;
@@ -166,7 +188,9 @@ window.PlaytimePlanner = (() => {
     const tools=$('.catalog-tools');tools.insertAdjacentHTML('afterend','<div id="focus-context" class="focus-context" hidden></div>');tools.insertAdjacentHTML('beforeend','<button type="button" id="uncertain-deadlines" class="text-button" title="预计或待定时间不计入精确截止密度" disabled>预计 / 待定</button><button type="button" id="clear-activity-focus" class="text-button" data-clear-selection hidden title="清除活动选择">清除选择 ×</button><button type="button" class="button button-small" id="plans-button" data-plans-manager disabled title="正在读取本地数据…">◇ 个人规划</button>');
     D.init({...host,closeDialogs,onSelection:selection=>editor(null,{selection}),onManual:()=>editor()});
     for(const [id,title,content]of [['plans','个人游玩计划','plans-content'],['plan-editor','个人计划','plan-editor-content'],['deadlines','截止明细','deadlines-content']])document.body.insertAdjacentHTML('beforeend',`<dialog id="${id}-dialog" class="feature-dialog" aria-labelledby="${id}-title"><div class="dialog-header"><h2 id="${id}-title">${title}</h2><button type="button" class="icon-button" data-close="${id}-dialog" aria-label="关闭">×</button></div><div class="dialog-body" id="${content}"></div></dialog>`);
-    $('#deadlines-dialog').addEventListener('close',()=>{inspectedDay=null;document.querySelectorAll('.date-inspected').forEach(n=>n.classList.remove('date-inspected'));});
+    J.register('#plans-dialog',{label:'个人计划',refresh:()=>{managerSignature=null;manager();}});
+    J.register('#deadlines-dialog',{label:'当天汇总',refresh:paintDay,closed:()=>{inspectedDay=null;document.querySelectorAll('.date-inspected').forEach(n=>n.classList.remove('date-inspected'));}});
+    J.register('#plan-editor-dialog',{label:'计划编辑',dirty:()=>formValues()!==planBaseline,busy:()=>saving});
     for(const d of document.querySelectorAll('.feature-dialog'))d.addEventListener('click',e=>{if(e.target!==d)return;const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();});
     document.addEventListener('submit',e=>{if(e.target.id==='plan-form'){e.preventDefault();save();}});
     document.addEventListener('change',e=>{if(e.target.id==='plan-game')eventOptions();});
@@ -184,16 +208,18 @@ window.PlaytimePlanner = (() => {
       // Drag selection fights touch scrolling on phones; the form is the creation path there.
       else if(b.hasAttribute('data-start-plan')){if(matchMedia('(max-width:850px)').matches)editor();else await D.start();}
       else if(b.dataset.plan)editor(b.dataset.plan);
+      else if(b.dataset.savedPlan)editor(b.dataset.savedPlan);
+      else if(b.hasAttribute('data-dismiss-plan-result'))b.closest('[data-plan-result]')?.remove();
       else if(b.hasAttribute('data-new-plan'))editor();
       else if(b.dataset.newPlanDay)editor(null,{day:b.dataset.newPlanDay});
       else if(b.dataset.planForEvent)editor(null,{eventId:b.dataset.planForEvent});
       else if(b.hasAttribute('data-move-plan'))await save(Number(b.dataset.movePlan));
-      else if(b.hasAttribute('data-delete-plan')){if(await H.mutate('/api/plans/'+editing,{},'DELETE')){$('#plan-editor-dialog').close();manager();}}
+      else if(b.hasAttribute('data-delete-plan')){if(saving)return;saving=true;try{if(await H.mutate('/api/plans/'+editing,{},'DELETE'))J.close($('#plan-editor-dialog'));}finally{saving=false;}}
       else if(b.dataset.agendaDate){deadlines(b.dataset.agendaDate,'activities');}
     });
     // The game badge is a scope control, while the surrounding title opens details.
-    document.addEventListener('click',e=>{const icon=e.target.closest('.event-avatar .game-icon,.catalog-game-badge .game-icon');if(!icon)return;const row=icon.closest('[data-game]');if(row){e.preventDefault();e.stopImmediatePropagation();$('#game-select').value=row.dataset.game;$('#game-select').dispatchEvent(new Event('change',{bubbles:true}));}},true);
+    document.addEventListener('click',e=>{const icon=e.target.closest('.event-avatar .game-icon,.catalog-game-badge .game-icon');if(!icon||icon.closest('.embedded-timeline'))return;const row=icon.closest('[data-game]');if(row){e.preventDefault();e.stopImmediatePropagation();$('#game-select').value=row.dataset.game;$('#game-select').dispatchEvent(new Event('change',{bubbles:true}));}},true);
   }
   function query(){const url=new URL(location.href);if(url.searchParams.has('planner')){url.searchParams.delete('planner');history.replaceState(null,'',url);manager();}else if(url.searchParams.has('event')){const id=url.searchParams.get('event');url.searchParams.delete('event');history.replaceState(null,'',url);H.openEvent(id);}else if(url.searchParams.has('planEvent')){const id=url.searchParams.get('planEvent');url.searchParams.delete('planEvent');history.replaceState(null,'',url);editor(null,{eventId:id});}else if(url.searchParams.has('plan')){const id=url.searchParams.get('plan');url.searchParams.delete('plan');history.replaceState(null,'',url);editor(id);}}
-  return {init,filterFocus,arrange,familyControls,densityButton,density,deadlines,queueFocus,focusDay,clearFocus,selectEvent,update,detail,plansModule,planBars,monthPlans,agendaPlans,relatedRewards,query,creationRow:()=>D.row(),stopCreating:()=>D.stop(),get creating(){return D.active;},get holding(){return D.holding;}};
+  return {init,filterFocus,arrange,familyControls,densityButton,density,deadlineNodes:nodes,deadlines,queueFocus,focusDay,clearFocus,selectEvent,update,detail,plansModule,planBars,monthPlans,agendaPlans,relatedRewards,query,creationRow:()=>D.row(),stopCreating:()=>D.stop(),get creating(){return D.active;},get holding(){return D.holding;}};
 })();

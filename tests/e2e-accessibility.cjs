@@ -9,7 +9,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
   let browser,page;const errors=[],observations=[];
   try{
     for(let i=0;i<70;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===69)throw Error('Server did not start');await new Promise(r=>setTimeout(r,150));}
-    browser=await chromium.launch({channel:'msedge',headless:true});
+    browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});
     page=await browser.newPage({viewport:{width:1440,height:900},locale:'zh-CN',timezoneId:'America/New_York'});page.on('pageerror',e=>errors.push(e.message));
     await page.emulateMedia({reducedMotion:'reduce'});
     await page.clock.setFixedTime(new Date('2026-10-27T20:00:00Z'));
@@ -28,6 +28,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
     await page.locator('.event-name').first().click();await names('event details');await page.locator('.detail-reminder summary').click();await names('event reminder');await page.locator('#detail-dialog [data-close]').click();
     await page.locator('#inbox-button').click();await names('inbox');await page.locator('#reminder-rules summary').click();await names('notification rules');await page.locator('#reminder-dialog [data-close]').click();
     await page.locator('#rail-plans').click();await names('plan list');await page.locator('[data-new-plan]').click();await names('plan editor');await page.locator('#plan-editor-dialog [data-close]').click();
+    await page.locator('#plans-dialog[open]').waitFor();await page.locator('#plans-dialog [data-close]').click();
     await page.locator('#rail-games').click();await page.waitForFunction(()=>document.querySelector('#plugin-list').textContent.includes('NIKKE'));await names('game manager');await page.locator('#preferences-dialog [data-close]').click();
     const contrast=async()=>page.evaluate(()=>{
       const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const ctx=canvas.getContext('2d',{willReadFrequently:true});

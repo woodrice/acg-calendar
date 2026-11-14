@@ -11,7 +11,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
     const request=async(url,body,method='POST')=>{const s=await state(),r=await fetch(base+url,{method,headers:{'content-type':'application/json','X-Calendar-Token':s.csrf_token},body:JSON.stringify(body)});assert.equal(r.ok,true,await r.text());};
     await request('/api/settings',{ui_motion:'standard',hide_completed:true});
     await request('/api/workspace',{view:{group_by:'none'}},'PATCH');
-    browser=await chromium.launch({channel:'msedge',headless:true});const p=await browser.newPage({viewport:{width:1440,height:1050},locale:'zh-CN',timezoneId:'America/New_York'}),errors=[];
+    browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});const p=await browser.newPage({viewport:{width:1440,height:1050},locale:'zh-CN',timezoneId:'America/New_York'}),errors=[];
     p.setDefaultTimeout(8000);p.on('pageerror',e=>errors.push(e.message));await p.clock.setFixedTime(new Date('2026-10-27T20:00:00Z'));
     const row=id=>p.locator(`#calendar [data-row-event="${id}"]`),bar=id=>row(id).locator('.event-bar');
     const roots=()=>p.locator('#calendar [data-order-root]').evaluateAll(rows=>rows.filter(n=>n.dataset.orderRoot===n.dataset.rowEvent&&n.querySelector('.event-bar')).map(n=>n.dataset.rowEvent));
@@ -51,7 +51,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
     await Promise.all([p.waitForResponse(r=>r.url().endsWith('/api/state')),p.evaluate(()=>window.dispatchEvent(new Event('focus')))]);
     await p.locator('#inbox-button').click();await p.locator('[data-locate-event]').click();await p.locator('#calendar .motion-located').waitFor();
     assert.equal(await p.locator('#event-search').inputValue(),'完全不匹配的活动');assert.match(await p.locator('#location-context').innerText(),/临时定位/);
-    await p.locator('#clear-location').click();await row(second).waitFor({state:'detached'});await p.locator('#event-search').fill('');
+    await p.locator('#clear-location').click();await row(second).waitFor({state:'detached'});await p.locator('#reminder-dialog[open]').waitFor();await p.locator('#reminder-dialog [data-close]').click();await p.locator('#event-search').fill('');
 
     await p.locator('#calendar-expand').click();await p.waitForFunction(()=>document.body.classList.contains('calendar-focused'));
     assert.ok(await p.locator('[data-frame=calendar]').evaluate(n=>n.getAnimations().some(a=>a.effect.getTiming().duration===275)));

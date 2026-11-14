@@ -10,3 +10,8 @@ dist/
 .dotnet/
 .DS_Store
 Thumbs.db
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore

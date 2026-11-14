@@ -2,14 +2,14 @@
 const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
-const base='http://127.0.0.1:8813';
 (async()=>{
+  const port=await require('./free-port.cjs')(),base='http://127.0.0.1:'+port;
   const output=path.resolve('logs/stale-poll-e2e'),dir=path.join(output,'data-'+Date.now());
   await fs.mkdir(dir,{recursive:true});
-  const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port','8813','--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
+  const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
   try{
     for(let i=0;i<50;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===49)throw Error('Server failed');await new Promise(r=>setTimeout(r,200));}
-    browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:900},locale:'zh-CN'}),errors=[];
+    browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:900},locale:'zh-CN'}),errors=[];
     page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base+'/?game=all');await page.locator('#calendar .event-name').first().waitFor();
     // The next state poll reads the server now (before the change) but hands its answer back only when released.

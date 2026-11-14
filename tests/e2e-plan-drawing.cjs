@@ -1,12 +1,13 @@
 // Opt-in drawing with real pointer events, timezone validation and activity comparisons.
 const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
-const base='http://127.0.0.1:8804',DAY=86400000;
+const DAY=86400000;
 (async()=>{
+  const port=await require('./free-port.cjs')(),base='http://127.0.0.1:'+port;
   const output=path.resolve('logs/plan-drawing-e2e'),dir=path.join(output,'data-'+Date.now());await fs.mkdir(dir,{recursive:true});
   await fs.cp('examples/plugins/sample-game',path.join(dir,'plugins/sample-game'),{recursive:true});
   const feed=path.join(dir,'plugins/sample-game/events.json'),fixture=JSON.parse(await fs.readFile(feed,'utf8'));fixture.versions[0].events[1].end.state='estimated';await fs.writeFile(feed,JSON.stringify(fixture));
-  const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port','8804','--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
+  const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
   try{
     for(let i=0;i<50;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===49)throw Error('QA server failed');await new Promise(r=>setTimeout(r,200));}
     const state=async()=>await(await fetch(base+'/api/state')).json(),initial=await state(),source=initial.events.filter(e=>e.game==='sample-game');
@@ -15,7 +16,7 @@ const base='http://127.0.0.1:8804',DAY=86400000;
     let s=await request('/api/plans','POST',{title:'仅兑换仍开放',game_id:'sample-game',event_id:source[0].id,start:'2026-11-02T15:00:00Z',end:'2026-11-02T16:00:00Z'});
     const first=s.plans.find(p=>p.title==='跨游戏规划也要列出'),exchange=s.plans.find(p=>p.title==='仅兑换仍开放');
     s=await request('/api/plans','POST',{title:'轴外规划仍完整保留',start:'2027-01-01T12:00:00Z',end:'2027-01-01T13:00:00Z'});const outside=s.plans.find(p=>p.title==='轴外规划仍完整保留');
-    browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1050},timezoneId:'America/New_York',locale:'zh-CN'}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+    browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1050},timezoneId:'America/New_York',locale:'zh-CN'}),errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base);await page.locator('#game-select option[value="sample-game"]').waitFor({state:'attached'});await page.locator('#game-select').selectOption('sample-game');
     await page.waitForFunction(()=>document.body.dataset.game==='sample-game'&&!document.querySelector('#game-select').disabled);await page.locator('#fit-version').click();await page.locator('.fit-version').waitFor();
     assert.equal(await page.locator('[data-plan-create-track]').count(),0);assert.equal(await page.locator('#plan-draw-tools').isVisible(),false);

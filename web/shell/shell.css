@@ -1,0 +1,236 @@
+/* Android app shell. Every rule is scoped to the shell root, which exists only on pages marked
+   <html data-shell="android">; ordinary web pages and the desktop are unaffected. */
+html[data-shell="android"] .pt-shell{
+  --ps-page:#F4F4EF;--ps-surface:#FFFFFF;--ps-ink:#141414;--ps-muted:#5C605B;--ps-line:#DADBD4;--ps-soft:#ECECE6;--ps-accent:#FFF200;--ps-accent-ink:#141414;--ps-edge:#91938D;
+  --ps-inverse:#141414;--ps-inverse-ink:#FFFFFF;--ps-inverse-muted:#C9CAC2;--ps-grip:#C9CAC2;--ps-danger:#A3141C;--ps-warn-bg:#FFF7E0;--ps-warn-ink:#6B4A00;--ps-scrim:rgba(20,20,20,.45);
+  --ps-on-inverse:var(--ps-accent);--ps-fill-opacity:1;
+  color-scheme:light;
+  position:fixed;inset:0;display:flex;flex-direction:column;background:var(--ps-page);color:var(--ps-ink);
+  font:15px/1.45 "Noto Sans SC","Microsoft YaHei UI",system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
+html[data-shell="android"] .pt-shell *{box-sizing:border-box}
+.pt-shell .ps-frame{display:contents}
+html[data-shell="android"] .pt-shell button{font:inherit;cursor:pointer}
+.pt-shell :where(button){color:inherit}
+html[data-shell="android"] .pt-shell :focus-visible{outline:3px solid var(--ps-ink);outline-offset:-3px}
+
+/* Top bar, sync line, tabs */
+.pt-shell .ps-bar{display:flex;align-items:center;gap:6px;min-height:56px;padding:4px 8px 4px 16px;background:var(--ps-surface);border-bottom:1px solid var(--ps-line)}
+.pt-shell .ps-bar>.ps-icon:first-child{margin-left:-12px}
+.pt-shell .ps-title{margin:0;font-size:21px;font-weight:700;flex:1;min-width:0}
+.pt-shell .ps-title:focus{outline:none}
+.pt-shell .ps-bar-sub{flex:1;font-size:13px;color:var(--ps-muted)}
+.pt-shell .ps-icon{position:relative;width:48px;height:48px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;flex:none}
+.pt-shell .ps-badge{position:absolute;top:8px;right:7px;min-width:16px;height:16px;padding:0 3px;background:var(--ps-inverse);color:var(--ps-on-inverse);font-size:10px;font-weight:700;line-height:16px}
+.pt-shell .ps-scope{min-height:40px;max-width:52%;padding:0 12px;border:1px solid var(--ps-edge);background:var(--ps-surface);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-shell .ps-sync{margin:0;padding:6px 16px;font-size:12px;color:var(--ps-muted);background:var(--ps-surface);border-bottom:1px solid var(--ps-line);display:flex;align-items:center;gap:6px}
+.pt-shell .ps-dot{width:6px;height:6px;background:#2F7A4F}
+.pt-shell .ps-sync{position:relative;flex-wrap:wrap;min-height:40px;padding-top:2px;padding-bottom:2px}
+.pt-shell .ps-sync-t{flex:1;min-width:0}
+.pt-shell .ps-sync-now{min-height:40px;padding:0 4px;font-size:12px}
+.pt-shell .ps-dot-run{background:var(--ps-ink)}
+.pt-shell .ps-sync-bar{position:absolute;left:0;right:0;bottom:-1px;height:3px;background:repeating-linear-gradient(90deg,var(--ps-ink) 0 24px,transparent 24px 48px);animation:ps-indeterminate 1s linear infinite}
+.pt-shell .ps-pull{height:0;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;font-size:12px;color:var(--ps-muted);transition:height .15s}
+.pt-shell .ps-pull span{padding-bottom:8px}
+@keyframes ps-indeterminate{from{background-position:0 0}to{background-position:48px 0}}
+@media (prefers-reduced-motion:reduce){.pt-shell .ps-sync-bar{animation:none}.pt-shell .ps-pull{transition:none}}
+.pt-shell .ps-main{flex:1;overflow-y:auto;overscroll-behavior:contain;padding-bottom:88px}
+.pt-shell .ps-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--ps-surface);border-top:1px solid var(--ps-line);padding-bottom:env(safe-area-inset-bottom)}
+.pt-shell .ps-tabs button{min-height:62px;border:0;border-top:3px solid transparent;background:transparent;color:var(--ps-muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px}
+.pt-shell .ps-tabs button[aria-current="page"]{color:var(--ps-ink);font-weight:700;border-top-color:var(--ps-ink)}
+
+/* Lists */
+.pt-shell .ps-next{display:flex;flex-direction:column;gap:3px;width:calc(100% - 32px);margin:12px 16px 4px;padding:14px 16px;border:0;background:var(--ps-accent);color:var(--ps-accent-ink);text-align:left}
+.pt-shell .ps-next-k{font-size:12px;font-weight:700;letter-spacing:1px}
+.pt-shell .ps-next-t{font-size:17px;font-weight:700}
+.pt-shell .ps-next-d,.pt-shell .ps-time{font-family:"JetBrains Mono",Consolas,monospace;font-weight:700}
+.pt-shell .ps-group-h{display:flex;justify-content:space-between;margin:0;padding:14px 16px 6px;font-size:13px;font-weight:700}
+.pt-shell .ps-group-h span:last-child{font-weight:400;color:var(--ps-muted)}
+.pt-shell .ps-list{background:var(--ps-surface);border-top:1px solid var(--ps-line);border-bottom:1px solid var(--ps-line)}
+.pt-shell .ps-row{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:8px 16px;border:0;border-bottom:1px solid var(--ps-soft);border-left:4px solid var(--game,#8A8D86);background:var(--ps-surface);text-align:left}
+.pt-shell .ps-mono{width:40px;height:40px;flex:none;background:var(--game,#8A8D86);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.pt-shell .ps-row-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.pt-shell .ps-row-title{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-shell .ps-row-sub,.pt-shell .ps-left,.pt-shell .ps-note,.pt-shell .ps-lead,.pt-shell .ps-foot{font-size:12px;color:var(--ps-muted)}
+.pt-shell .ps-row-end{display:flex;flex-direction:column;align-items:flex-end;flex:none}
+.pt-shell .ps-check{width:24px;height:24px;border:1.5px solid var(--ps-muted);display:flex;align-items:center;justify-content:center;font-weight:700}
+.pt-shell .ps-row[aria-checked="true"] .ps-check{background:var(--ps-accent);color:var(--ps-accent-ink);border-color:var(--ps-accent-ink)}
+.pt-shell .ps-lead,.pt-shell .ps-note,.pt-shell .ps-foot{margin:10px 16px}
+.pt-shell .ps-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:48px 24px;text-align:center}
+.pt-shell .ps-empty span{font-size:13px;color:var(--ps-muted)}
+
+/* Swipeable rows */
+.pt-shell .ps-swipe{position:relative;overflow:hidden;background:var(--ps-inverse);touch-action:pan-y;-webkit-touch-callout:none;user-select:none}
+.pt-shell .ps-swipe .ps-row{position:relative;z-index:1;touch-action:pan-y;transition:transform .18s ease-out}
+.pt-shell .ps-swiping .ps-row{transition:none}
+.pt-shell .ps-swipe-bg{position:absolute;top:0;bottom:0;display:none;align-items:center;padding:0 20px;font-size:14px;font-weight:700}
+.pt-shell .ps-swipe-done{right:0;background:var(--ps-accent);color:var(--ps-accent-ink)}
+.pt-shell .ps-swipe-star{left:0;background:var(--ps-inverse);color:var(--ps-on-inverse)}
+.pt-shell .ps-swipe[data-reveal="done"] .ps-swipe-done,.pt-shell .ps-swipe[data-reveal="star"] .ps-swipe-star{display:flex;left:0;right:0}
+.pt-shell .ps-swipe[data-reveal="done"] .ps-swipe-done{justify-content:flex-end}
+.pt-shell .ps-armed .ps-swipe-bg{text-decoration:underline}
+.pt-shell .ps-menu .ps-set{font-size:15px}
+@media (prefers-reduced-motion:reduce){.pt-shell .ps-swipe .ps-row{transition:none}}
+
+/* Calendar */
+.pt-shell .ps-seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;margin:10px 16px;border:1px solid var(--ps-edge)}
+.pt-shell .ps-seg button{min-height:44px;border:0;background:var(--ps-surface);font-size:14px}
+.pt-shell .ps-seg button[aria-selected="true"],.pt-shell .ps-seg button[aria-checked="true"]{background:var(--ps-inverse);color:var(--ps-on-inverse);font-weight:700}
+.pt-shell .ps-fold-h{margin:12px 16px -4px;font-size:13px;color:var(--ps-muted,inherit)}
+.pt-shell .ps-mount{min-height:240px;margin:0 16px;background:var(--ps-surface);border:1px dashed var(--ps-line)}
+.pt-shell .ps-month{background:var(--ps-surface);padding:8px 8px 12px}
+.pt-shell .ps-month-h{display:flex;justify-content:space-between;align-items:center;padding:0 0 4px;font-weight:700}
+.pt-shell .ps-month-h .ps-note{margin:0}
+.pt-shell .ps-week,.pt-shell .ps-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
+.pt-shell .ps-week{font-size:11px;color:var(--ps-muted);text-align:center;padding-bottom:4px}
+.pt-shell .ps-cell{position:relative;height:52px;border:0;padding:4px 5px;background:var(--ps-page);text-align:left;overflow:hidden}
+.pt-shell .ps-out{background:transparent}
+.pt-shell .ps-cell-fill{position:absolute;left:0;right:0;bottom:0;height:var(--fill);background:var(--ps-accent);opacity:var(--ps-fill-opacity)}
+.pt-shell .ps-cell-d{position:relative;font-family:"JetBrains Mono",Consolas,monospace;font-size:13px}
+.pt-shell .ps-cell-n{position:absolute;right:5px;bottom:3px;font-size:12px;font-weight:700}
+.pt-shell .ps-today{box-shadow:inset 0 3px 0 var(--ps-ink)}
+.pt-shell .ps-today .ps-cell-d{font-weight:700}
+
+/* Plans and settings */
+.pt-shell .ps-cards{display:flex;flex-direction:column;gap:10px;padding:0 16px}
+.pt-shell .ps-card{display:flex;flex-direction:column;gap:4px;padding:12px 14px;background:var(--ps-surface);border:1px solid var(--ps-line);border-left:4px solid var(--ps-ink)}
+.pt-shell .ps-card-t{font-weight:700}
+.pt-shell .ps-fab{position:absolute;right:16px;bottom:78px;min-height:56px;padding:0 20px;border:0;background:var(--ps-accent);color:var(--ps-accent-ink);display:flex;align-items:center;gap:8px;z-index:2}
+.pt-shell .ps-status-card{display:flex;flex-direction:column;gap:3px;margin:12px 16px;padding:14px 16px;background:var(--ps-inverse);color:var(--ps-inverse-ink)}
+.pt-shell .ps-status-card .ps-next-k{color:var(--ps-on-inverse)}
+.pt-shell .ps-status-card .ps-row-sub{color:var(--ps-inverse-muted)}
+.pt-shell .ps-set{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:56px;padding:6px 12px 6px 16px;border:0;border-bottom:1px solid var(--ps-soft);background:var(--ps-surface);text-align:left}
+.pt-shell .ps-static{cursor:default}
+.pt-shell .ps-sub-h{margin:14px 16px 8px;font-size:17px}
+
+/* Layers: a detail page slides over the tabs; sheets rise from the bottom */
+.pt-shell .ps-layer{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column}
+.pt-shell .ps-page-layer{flex:1;display:flex;flex-direction:column;background:var(--ps-surface);animation:ps-push .2s ease-out}
+.pt-shell .ps-scroll{flex:1;overflow-y:auto}
+.pt-shell .ps-hero-img{display:block;width:100%;max-height:220px;object-fit:cover;background:var(--ps-page)}
+.pt-shell .ps-mono-img{background:var(--ps-surface);border:1px solid var(--ps-line);overflow:hidden}
+.pt-shell .ps-mono-img img{width:100%;height:100%;object-fit:cover}
+.pt-shell .ps-warnings{margin:0;padding:8px 12px 8px 28px;background:var(--ps-warn-bg);font-size:13px;color:var(--ps-warn-ink)}
+.pt-shell .ps-more summary{min-height:44px;display:flex;align-items:center;font-weight:500;cursor:pointer}
+.pt-shell .ps-more summary::before{content:"▸";width:1.2em}
+.pt-shell .ps-more[open] summary::before{content:"▾"}
+.pt-shell .ps-more p,.pt-shell .ps-more ul{margin:4px 0 0;font-size:13px;color:var(--ps-muted);white-space:pre-line}
+.pt-shell .ps-source{display:inline-flex;align-items:center;min-height:44px;color:var(--ps-ink);font-size:14px}
+.pt-shell .ps-month-h .ps-icon{width:44px;height:44px}
+.pt-shell .ps-hero{height:184px;background:linear-gradient(135deg,var(--game,#555) 0%,#2B2B2B 100%);display:flex;align-items:flex-end;padding:14px 16px;color:#fff;font-size:26px;font-weight:700}
+.pt-shell .ps-pad{padding:16px;display:flex;flex-direction:column;gap:12px}
+.pt-shell .ps-detail-t{font-size:22px}
+.pt-shell .ps-tags{display:flex;flex-wrap:wrap;gap:6px}
+.pt-shell .ps-tags span{padding:2px 8px;background:var(--ps-page);font-size:12px}
+.pt-shell .ps-tags .ps-tag-on{background:var(--ps-inverse);color:var(--ps-on-inverse);font-weight:700}
+.pt-shell .ps-times{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--ps-line)}
+.pt-shell .ps-times>div{display:flex;flex-direction:column;gap:2px;padding:10px 12px}
+.pt-shell .ps-times>div:first-child{border-right:1px solid var(--ps-line)}
+.pt-shell .ps-times-left{grid-column:1/-1;flex-direction:row!important;justify-content:space-between;align-items:baseline;border-top:1px solid var(--ps-line);background:var(--ps-accent);color:var(--ps-accent-ink);font-weight:700}
+.pt-shell .ps-pad .ps-note{margin:0}
+.pt-shell .ps-actions{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;padding:10px 16px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--ps-line);background:var(--ps-surface)}
+.pt-shell .ps-btn{min-height:48px;padding:0 14px;border:1px solid var(--ps-edge);background:var(--ps-surface);font-size:14px}
+.pt-shell .ps-btn:disabled{opacity:.55;cursor:progress}
+.pt-shell .ps-primary{border-color:var(--ps-accent);background:var(--ps-accent);color:var(--ps-accent-ink);font-weight:700}
+.pt-shell .ps-wide{width:calc(100% - 32px);margin:14px 16px 0}
+.pt-shell .ps-layer-sheet{justify-content:flex-end}
+.pt-shell .ps-scrim{position:absolute;inset:0;background:var(--ps-scrim);animation:ps-fade .2s}
+.pt-shell .ps-sheet{position:relative;max-height:88%;overflow-y:auto;background:var(--ps-surface);border-top:3px solid var(--ps-ink);padding-bottom:calc(16px + env(safe-area-inset-bottom));animation:ps-rise .22s ease-out}
+.pt-shell .ps-grip{width:40px;height:4px;margin:8px auto 0;background:var(--ps-grip)}
+.pt-shell .ps-sheet-h{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 4px 16px;min-height:48px}
+.pt-shell .ps-sheet-h .ps-title{font-size:18px}
+.pt-shell .ps-link{min-height:44px;padding:0 12px;border:0;background:transparent;text-decoration:underline;font-size:14px}
+.pt-shell .ps-label{margin:12px 16px 6px;font-size:13px;font-weight:700}
+.pt-shell .ps-chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px}
+.pt-shell .ps-chip{min-height:38px;padding:0 14px;border:0;background:var(--ps-soft);color:var(--ps-muted);font-size:14px}
+.pt-shell .ps-chip[aria-pressed="true"]{background:var(--ps-accent);color:var(--ps-accent-ink);font-weight:700}
+.pt-shell .ps-switch{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:56px;padding:6px 16px;border:0;border-top:1px solid var(--ps-soft);background:var(--ps-surface);text-align:left}
+.pt-shell .ps-switch>span:first-child{display:flex;flex-direction:column}
+.pt-shell .ps-knob{position:relative;width:44px;height:24px;flex:none;border:1.5px solid var(--ps-muted);background:var(--ps-surface)}
+.pt-shell .ps-knob::after{content:"";position:absolute;top:2.5px;left:2.5px;width:16px;height:16px;background:var(--ps-muted);transition:left .15s}
+.pt-shell .ps-switch[aria-checked="true"] .ps-knob{background:var(--ps-accent);border-color:var(--ps-accent-ink)}
+.pt-shell .ps-switch[aria-checked="true"] .ps-knob::after{background:var(--ps-accent-ink)}
+.pt-shell .ps-switch[aria-checked="true"] .ps-knob::after{left:21.5px}
+.pt-shell .ps-field{display:flex;flex-direction:column;gap:4px;margin:8px 16px 0;font-size:13px;font-weight:700}
+.pt-shell .ps-field input{min-height:44px;padding:0 10px;border:1px solid var(--ps-edge);font:inherit;font-size:16px;font-weight:400;background:var(--ps-surface);color:var(--ps-ink)}
+.pt-shell .ps-two{display:grid;grid-template-columns:1fr;gap:0}
+.pt-shell .ps-fields{border:0;margin:0;padding:0;min-width:0}
+.pt-shell .ps-fields:disabled input{opacity:.6}
+.pt-shell .ps-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.pt-shell .ps-error{margin:10px 16px 0;color:var(--ps-danger);font-size:13px}
+.pt-shell .ps-actions-inline{display:flex;gap:8px;padding:14px 16px 0}
+.pt-shell .ps-actions-inline .ps-btn{flex:1}
+.pt-shell .ps-confirm{margin:4px 16px 8px;padding:12px;border:1px solid var(--ps-edge);background:var(--ps-page)}
+.pt-shell .ps-confirm p{margin:0;font-weight:700}
+.pt-shell .ps-confirm .ps-actions-inline{padding:10px 0 0}
+
+/* Toast with undo, above the tabs */
+.pt-shell .ps-toast{position:absolute;left:12px;right:12px;bottom:76px;z-index:9;display:none;align-items:center;justify-content:space-between;min-height:48px;padding:0 4px 0 16px;background:var(--ps-inverse);color:var(--ps-inverse-ink);font-size:14px}
+.pt-shell .ps-toast.ps-on{display:flex}
+.pt-shell .ps-toast .ps-link{color:var(--ps-on-inverse);text-decoration:none;font-weight:700}
+.pt-shell[data-layer="page"] .ps-toast{bottom:84px}
+.pt-shell[data-tab="plans"]:not([data-layer="page"]) .ps-toast{bottom:144px} /* above the 新建计划 button */
+
+@keyframes ps-push{from{transform:translateX(24px);opacity:.6}to{transform:none;opacity:1}}
+@keyframes ps-rise{from{transform:translateY(40px)}to{transform:none}}
+@keyframes ps-fade{from{opacity:0}}
+.pt-shell [data-layer-update] :is(.ps-page-layer,.ps-sheet,.ps-scrim){animation:none}
+@media (prefers-reduced-motion:reduce){.pt-shell .ps-page-layer,.pt-shell .ps-sheet,.pt-shell .ps-scrim{animation:none}.pt-shell .ps-knob::after{transition:none}}
+
+/* Corners. The shared page CSS rounds every button and input (7px) but nothing else, which mixed
+   square boxes with rounded controls inside the shell. The shell sets its own corners: edge-to-edge
+   rows, tabs and the detail header stay square; free-standing cards, controls and sheets are round. */
+.pt-shell{--ps-r-s:6px;--ps-r:10px;--ps-r-l:14px;--ps-r-sheet:20px}
+.pt-shell :where(button,input,select,textarea){border-radius:0}
+.pt-shell :is(.ps-btn,.ps-field input,.ps-seg,.ps-mono-img,.ps-mono,.ps-warnings){border-radius:var(--ps-r)}
+.pt-shell :is(.ps-next,.ps-card,.ps-status-card,.ps-times,.ps-confirm,.ps-mount,.ps-toast){border-radius:var(--ps-r-l)}
+.pt-shell :is(.ps-check,.ps-cell,.ps-tags span){border-radius:var(--ps-r-s)}
+.pt-shell :is(.ps-knob,.ps-badge,.ps-grip){border-radius:999px}
+.pt-shell .ps-chip{border-radius:8px}
+.pt-shell .ps-scope{border-radius:var(--ps-r)}
+.pt-shell :is(.ps-icon,.ps-dot),.pt-shell .ps-knob::after{border-radius:50%}
+.pt-shell .ps-fab{border-radius:18px;box-shadow:0 4px 14px rgba(20,20,20,.18)}
+.pt-shell :is(.ps-seg,.ps-times,.ps-mono-img){overflow:hidden}
+.pt-shell .ps-sheet{border-top:0;border-radius:var(--ps-r-sheet) var(--ps-r-sheet) 0 0}
+/* design.css forces input corners with !important; inside the shell, fields follow the shell. */
+.pt-shell .ps-field input{border-radius:var(--ps-r)!important}
+/* Titles take focus only so screen readers announce a new page or sheet; no box is drawn for that. */
+html[data-shell="android"] .pt-shell .ps-title:focus-visible{outline:none}
+/* Plan cards open the editor; deleting is a quiet text action under the form (it can be undone). */
+.pt-shell button.ps-card{width:100%;text-align:left;color:inherit;font:inherit}
+.pt-shell .ps-danger{display:block;margin:14px auto 0;color:var(--ps-danger)}
+
+/* Dark theme: 我的 → 外观 (跟随系统 / 浅色 / 深色). The accent stays the same yellow; inverted
+   blocks (toast, status card, selected segment) become a raised dark grey instead of light. */
+html[data-shell="android"] .pt-shell[data-theme="dark"]{
+  --ps-page:#121311;--ps-surface:#1C1D1A;--ps-ink:#ECECE6;--ps-muted:#A9ACA4;--ps-line:#33352F;--ps-soft:#282A25;--ps-edge:#686A62;
+  --ps-inverse:#33352F;--ps-inverse-ink:#F4F4EF;--ps-inverse-muted:#B9BBB3;--ps-grip:#4A4C45;--ps-danger:#FF8A80;--ps-warn-bg:#3A3020;--ps-warn-ink:#F2D28A;--ps-scrim:rgba(0,0,0,.6);--ps-fill-opacity:.35;
+  color-scheme:dark}
+.pt-shell[data-theme="dark"] .ps-fab{box-shadow:0 4px 14px rgba(0,0,0,.5)}
+/* The month fill sits under light text in the dark theme, so it is a translucent yellow there. */
+/* 我的 sub-pages: label and value rows, game status rows */
+.pt-shell .ps-info{flex:1;min-width:0;display:flex;flex-direction:column}
+.pt-shell .ps-info-v{flex:none;text-align:right;max-width:50%}
+.pt-shell .ps-set.ps-static{gap:12px;justify-content:flex-start}
+.pt-shell .ps-set.ps-static .ps-info-v{margin-left:auto}
+.pt-shell .ps-warn-t{color:var(--ps-danger)}
+.pt-shell a.ps-source{margin-top:12px}
+/* The timeline is the shared web render (C2), coloured through the web theme variables. Those
+   variables are redefined on its container only, from the shell's own tokens, so it follows the
+   shell's theme and preset without touching the shared CSS. */
+.pt-shell #ps-timeline-mount{
+  --page:var(--ps-page);--paper:var(--ps-surface);--ink:var(--ps-ink);--muted:var(--ps-muted);--line:var(--ps-line);--panel-alt:var(--ps-soft);
+  --green:var(--ps-accent);--accent-ink:var(--ps-accent-ink);--bar-bg:var(--ps-soft);--bar-ink:var(--ps-ink);--link:var(--ps-ink);
+  color:var(--ps-ink);background:var(--ps-page)}
+.pt-shell[data-theme="dark"] #ps-timeline-mount{--lime-soft:#2E3122;color-scheme:dark}
+.pt-shell #ps-timeline-mount button{color:inherit}
+/* 外观 → 配色 */
+.pt-shell .ps-swatch{width:36px;height:36px;flex:none;border-radius:var(--ps-r);border:1px solid var(--ps-line);display:grid;place-items:center}
+.pt-shell .ps-swatch i{width:16px;height:16px;border-radius:50%}
+.pt-shell .ps-preset{border-left:0}
+.pt-shell .ps-confirm .ps-note{margin:4px 0 0;font-weight:400}
+/* Long titles stay readable at large system text sizes: up to two lines before they are cut. */
+.pt-shell .ps-row-title{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+/* Date and time fields take the full width, so the time is not cut off at large text sizes. */
+.pt-shell .ps-field input{width:100%;min-width:0}
+/* Touch targets: at least 44px on every control (the scope button and filter chips were smaller). */
+.pt-shell .ps-scope,.pt-shell .ps-chip{min-height:44px}

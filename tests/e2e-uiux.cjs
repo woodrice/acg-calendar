@@ -8,7 +8,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
   let browser;
   try{
     for(let i=0;i<70;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===69)throw Error('QA server did not start');await new Promise(r=>setTimeout(r,150));}
-    browser=await chromium.launch({channel:'msedge',headless:true});
+    browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});
     const p=await browser.newPage({viewport:{width:1440,height:900},locale:'zh-CN',timezoneId:'America/New_York'}),errors=[];p.on('pageerror',e=>errors.push(e.message));
     await p.clock.setFixedTime(new Date('2026-10-27T20:00:00Z'));
     const state=async()=>await(await fetch(base+'/api/state')).json();
@@ -31,7 +31,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
     assert.equal(await p.locator('#month-view').getAttribute('aria-pressed'),'true');
     const box=await p.locator('#calendar').evaluate(n=>({client:n.clientHeight,scroll:n.scrollHeight}));assert.ok(box.scroll<=box.client+2,'Month grid does not fit: '+JSON.stringify(box));
     await p.locator('.month-date').filter({hasText:'27'}).first().click();assert.deepEqual((await state()).workspace.view.focus,{date:null,event_id:null});
-    assert.equal(await p.locator('[data-day-tab="activities"]').getAttribute('aria-pressed'),'true');await p.locator('#deadlines-dialog [data-close]').click();
+    assert.equal(await p.locator('[data-day-tab="deadlines"]').getAttribute('aria-pressed'),'true');await p.locator('#deadlines-dialog [data-close]').click();
     await p.screenshot({path:path.join(out,'deadline-month.png')});
     await p.locator('#rail-games').click();await p.waitForFunction(()=>document.querySelector('#plugin-list').textContent.includes('NIKKE'));
     assert.equal(await p.locator('#preferences-title').innerText(),'游戏管理');assert.equal(await p.locator('#open-plugin-directory').isVisible(),true);await p.locator('#preferences-dialog [data-close]').click();

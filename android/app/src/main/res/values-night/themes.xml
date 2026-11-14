@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Playtime" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/playtime_page</item>
+        <item name="android:statusBarColor">@color/playtime_surface</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+    <color name="playtime_page">#121311</color>
+    <color name="playtime_surface">#1C1D1A</color>
+</resources>

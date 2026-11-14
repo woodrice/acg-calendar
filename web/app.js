@@ -4,6 +4,7 @@
   const P = window.PlaytimePlanner;
   const M = window.PlaytimeMotion;
   const R = window.PlaytimeOrder;
+  const J = window.PlaytimeJourney;
   const combined = () => ['all','selected'].includes(S.game);
   const $ = selector => document.querySelector(selector);
   const DAY = 86400000;
@@ -18,6 +19,8 @@
   const referenceLabels = {next_maintenance_start:'下次版本维护前，具体时间未公布', recruitment_cycles:'按寻访次数结束，具体日期未公布', maintenance_end:'随本版本维护结束开放', unpublished:'公告未给出结束时间', invalid_interval:'时间顺序异常，请核对'};
   const S = {data:null, game:null, version:null, view:'timeline', days:14, fit:false, anchor:null, selected:null, categories:new Set(['event','gacha','exchange','update','maintenance']), includePending:true, rules:null, rulesTab:'config', seenNotices:new Set(), initialized:false, pollTimer:null, toastTimer:null};
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  const androidRequested=new URLSearchParams(location.search).get('shell')==='android';
+  let androidSource,loadFailure=null;
   const now = () => Date.now();
   const allEvents = () => S.data?.events || [];
   const activeVersion = () => combined()?{id:S.game,name:S.game==='selected'?'自选游戏组合':'全部游戏',source:{origin:'combined'},maintenance:{start:null}}:S.data?.versions.find(version => version.id === S.version) || {id:S.game,name:gameInfo()?.name||'日历',source:{origin:'empty'},maintenance:{start:null}};
@@ -291,7 +294,7 @@
     try{
       const response=await fetch(path,{method,headers:method==='GET'?{}:{'Content-Type':'application/json','X-Calendar-Token':S.data.csrf_token},body:body===undefined?undefined:JSON.stringify(body)});
       const result=await response.json();
-      if(!response.ok) throw new Error(result.error || '请求失败');
+      if(!response.ok) throw Object.assign(new Error(result.error || '请求失败'),{status:response.status,code:result.code});
       return result;
     }finally{if(write){S.writes++;S.activeWrites--;}}
   }
@@ -335,25 +338,25 @@
     }}:null);
     return true;
   }
-  async function selectScope(game,selected_games,reset=false) {
+  async function selectScope(game,selected_games,reset=false,{shell=false,location=false}={}) {
     if(S.scoping)return;
-    S.located=null;
+    if(!location)cancelLocation();else S.located=null;
     S.dateIntent=(S.dateIntent||0)+1;
     S.scopeGeneration=(S.scopeGeneration||0)+1;S.scoping=true;
     const controls=[$('#game-select'),...document.querySelectorAll('[data-select-game]')];controls.forEach(c=>c.disabled=true);
     try {
-      if(game!=='selected')await api('/api/settings','POST',{active_game:game});
+      if(!shell&&game!=='selected')await api('/api/settings','POST',{active_game:game});
       const data=await api('/api/workspace','PATCH',{view:{scope:['all','selected'].includes(game)?game:'single',selected_games}});
       S.game=game;S.version=null;S.rules=null;
       if(reset){S.explicitAnchor=null;S.fit=false;S.days=Number($('#range-select').value);S.anchor=Math.floor(civil(now()));$('#event-search').value='';}
       S.scoping=false;applyState(data);
-    }catch(error){toast(error.message,true);S.scoping=false;render();}
+    }catch(error){if(shell)throw error;toast(error.message,true);S.scoping=false;render();}
     finally{S.scoping=false;$('#game-select').disabled=false;document.querySelectorAll('[data-select-game]').forEach(c=>c.disabled=false);}
   }
   function applyState(data) {
     if(S.scoping)return;
     const first=!S.initialized;
-    S.data=data;S.localZone=null;S.stateTag=null;M.configure(data.settings.ui_motion);W.accept(data);
+    S.data=data;loadFailure=null;S.localZone=null;S.stateTag=null;M.configure(data.settings.ui_motion);W.accept(data);
     const scopeSignature=JSON.stringify([W.view.scope,W.selected()]);
     if(S.scopeSignature&&S.scopeSignature!==scopeSignature)S.game=W.view.scope==='single'?W.selected()[0]:W.view.scope;
     S.scopeSignature=scopeSignature;
@@ -378,11 +381,12 @@
       if(d&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d))&&new Date(d).toISOString().slice(0,10)===d)S.explicitAnchor=S.anchor=Date.parse(d)/DAY;
     }
     render();
-    if(first)P.query();
+    if(first&&!androidRequested)P.query();
     window.PlaytimeCustomize.update();
-    if(first&&new URLSearchParams(location.search).has("appearance")){const url=new URL(location.href),panel=url.searchParams.get('appearance');url.searchParams.delete('appearance');history.replaceState(null,'',url);if(panel==='reminders')openReminders();else window.PlaytimeCustomize.open(['layout','theme','network','backup','plugins'].includes(panel)?panel:'theme');}
+    if(first&&!androidRequested&&new URLSearchParams(location.search).has("appearance")){const url=new URL(location.href),panel=url.searchParams.get('appearance');url.searchParams.delete('appearance');history.replaceState(null,'',url);if(panel==='reminders')openReminders();else window.PlaytimeCustomize.open(['layout','theme','network','backup','plugins'].includes(panel)?panel:'theme');}
     if($('#reminder-dialog').open) renderInbox();
     $('#load-error').hidden=true;
+    androidSource?.publish();
   }
   function buildFilters() {
     $('#category-filters').innerHTML=Object.entries(categories).map(([id,category])=>`<label class="filter-row" style="--category:${category.color}"><input type="checkbox" data-category="${id}" ${S.categories.has(id)?'checked':''}><span class="category-dot"></span><span>${category.name}</span><span class="filter-count" data-count="${id}">0</span></label>`).join('');
@@ -428,7 +432,7 @@
     const filtered=filteredEvents(), shown=['list','upcoming'].includes(S.view)?filtered:filtered.filter(event=>overlaps(event,lo,hi));
     const pending=filtered.filter(e=>!e.end.at&&e.time_kind!=='point').length;
     const total=scopeEvents().length;
-    $('#visible-summary').textContent=S.view==='month'?`本月明确截止关联 ${viewProjection(filtered,shown,lo,hi).visible.length} 项活动 · 筛选后 ${filtered.length} 项`:S.view==='upcoming'?`筛选后 ${filtered.length} 项 · 按显示时区列出未来截止`:S.view==='list'?`本版本共 ${total} 项 · 当前显示 ${shown.length} 项`:`日期范围内 ${shown.length} / 筛选后 ${filtered.length} 项 · 本版本 ${total} 项`;
+    $('#visible-summary').textContent=S.view==='month'?`月历范围截止关联 ${viewProjection(filtered,shown,lo,hi).visible.length} 项活动 · 筛选后 ${filtered.length} 项`:S.view==='upcoming'?`筛选后 ${filtered.length} 项 · 按显示时区列出未来截止`:S.view==='list'?`本版本共 ${total} 项 · 当前显示 ${shown.length} 项`:`日期范围内 ${shown.length} / 筛选后 ${filtered.length} 项 · 本版本 ${total} 项`;
     $('#catalog-count').textContent=`${S.view==='list'?'全部列表不受日期范围限制':S.fit?'版本时间轴总览':'范围外活动可在“全部活动”查看'}${pending?' · '+pending+' 项截止待定':''}`;
     if(S.view==='list') $('#period-title').textContent=`「${version.name}」全部活动`;
     if(S.view==='upcoming') $('#period-title').textContent='近期截止';
@@ -454,7 +458,7 @@
     renderHiddenSummary(filtered,viewProjection(filtered,shown,lo,hi));
     const located=S.located&&allEvents().find(e=>e.id===S.located),context=$('#location-context');
     context.hidden=!located||S.view!=='timeline';
-    if(!context.hidden)patch(context,`<span>临时定位 · ${esc(cleanTitle(located))}</span><button type="button" class="text-button" id="clear-location">结束定位 ×</button>`);
+    if(!context.hidden)patch(context,`<span>临时定位 · ${esc(cleanTitle(located))} · 保留原查看位置</span><button type="button" class="text-button" id="clear-location">返回原视图 ↶</button>`);
     const unscheduled=filtered.filter(e=>!e.start.at||e.invalid_interval);
     $('#unscheduled').hidden=!unscheduled.length;
     patch($('#unscheduled'),unscheduled.length?`<h3>时间待核对 · ${unscheduled.length} 项</h3>${unscheduled.map(e=>`<button type="button" data-event="${e.id}">${esc(cleanTitle(e))}</button>`).join('')}`:'');
@@ -507,7 +511,7 @@
     const ids=new Set(events.map(e=>e.id)),next=(S.data.presentation.deadline_nodes||[]).filter(n=>ids.has(n.event_id)&&Date.parse(n.at)>now()).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at))[0];
     patch($('#deadline-strip'),next?`<span>NEXT DEADLINE</span><strong>${esc(format(next.at))}</strong><span>${next.kind==='exchange'?'兑换关闭 · ':''}${esc(next.title)} · 还剩 ${countdownSlot(next.at)}</span><button class="text-button" type="button" data-event="${next.event_id}">查看活动 ↗</button>`:'<span>DEADLINES</span><span>当前筛选中没有已明确的未来截止时间。</span>');
   }
-  function bar(event,lo,hi,{month=false,top=0}={}) {
+  function bar(event,lo,hi,{month=false,top=0,embedded=false}={}) {
     const start=civil(event.start.at), isPoint=event.time_kind==='point';
     const end=isPoint?start+0.03:(event.end.at?civil(event.end.at):hi);
     const a=Math.max(lo,start),b=Math.min(hi,end),span=hi-lo;
@@ -515,22 +519,23 @@
     const left=(a-lo)/span*100,width=(b-a)/span*100;
     const cat=categories[event.category];
     const tooltip=`${cleanTitle(event)} · ${format(event.start.at,{year:true})} → ${event.end.at?format(event.end.at,{year:true}):referenceLabels[event.end.reference]||'截止待定'} · ${status(event)}`;
-    const sortable=!month&&!event._tree_depth,shortcuts=sortable?' aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"':'';
+    const sortable=!embedded&&!month&&!event._tree_depth,shortcuts=sortable?' aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"':'';
     const hoverTitle=esc(sortable?tooltip+'\n长按上下拖动排序':tooltip);
     if(isPoint&&!month) return `<button type="button" class="point-marker" style="--category:${cat.color};--bar-left:${left}%" data-event="${event.id}"${shortcuts} aria-label="${esc(tooltip)}" title="${hoverTitle}"></button>`;
     const label=month?(combined()?gameLabel(event)+' · ':'')+cleanTitle(event):(start<lo?'← ':'')+format(event.start.at,{dateOnly:true})+(event.start.state==='estimated'?' 预计':'')+(event.end.at?' → '+format(event.end.at,{dateOnly:true}):' → 待定')+(end>hi?' →':'');
     const image=month?'':artwork(event,'bar-art');
     return `<button type="button" class="event-bar ${image?'has-art':''} ${!event.end.at&&!isPoint?'open-end':''} ${event.start.state==='estimated'?'estimated-start':''} ${end>hi?'clipped-end':''} ${event.completed?'completed':''}" style="--category:${cat.color};--event-accent:${accent(event)};--bar-left:${left}%;--bar-width:${width}%;--bar-top:${top}px" data-progress="${a},${b}" data-event="${event.id}"${shortcuts} aria-label="${esc(tooltip)}" title="${hoverTitle}">${image}<span class="bar-label">${esc(label)}</span></button>`;
   }
-  function renderTimeline(events,lo,hi) {
-    const plans=P.planBars(lo,hi);
-    if(!events.length&&!plans&&!P.creating) return emptyCalendar();
-    events=timelineRows(events);
+  function renderTimeline(events,lo,hi,{embedded=false,openPlans=false}={}) {
+    const plans=P.planBars(lo,hi,{interactive:!embedded||openPlans,embedded});
+    const creation=embedded?'':P.creationRow(),fit=!embedded&&S.fit;
+    if(!events.length&&!plans&&!creation) return embedded?'<p class="empty-state">这段日期没有符合当前筛选的活动。</p>':emptyCalendar();
+    events=embedded?P.arrange(events):timelineRows(events);
     const today=Math.floor(civil(now())), days=hi-lo;
     const axis=Array.from({length:days},(_,i)=>{
       const serial=lo+i,d=serialDate(serial),week=d.getUTCDay();
-      const label=!S.fit||i%7===0||serial===today;
-      return `<div class="axis-day ${serial===today?'today':''} ${[0,6].includes(week)?'weekend':''}" title="${shortDay(serial,true)}">${P.densityButton(serial,false,{fit:S.fit,label})}</div>`;
+      const label=!fit||i%7===0||serial===today;
+      return `<div class="axis-day ${serial===today?'today':''} ${[0,6].includes(week)?'weekend':''}" title="${shortDay(serial,true)}">${P.densityButton(serial,false,{fit,label})}</div>`;
     }).join('');
     const groupOrder=(W.view.starred_first&&events.some(e=>e.starred)?['starred']:[]).concat(W.view.group_by==='none'?['all']:W.view.group_by==='game'?[...new Set(events.map(e=>e.game))]:['gacha','event','exchange','update','maintenance']);
     const rows=groupOrder.map(category=>{
@@ -540,10 +545,57 @@
       return `<div class="timeline-group" style="--category:${definition.color}"><span class="category-dot"></span>${definition.name}<span class="group-count">${String(group.length).padStart(2,'0')}</span></div>`+group.map(event=>{
         const markers=event.phases.filter(p=>p.at&&civil(p.at)>=lo&&civil(p.at)<hi).map(p=>`<button type="button" class="phase-mark" style="left:${(civil(p.at)-lo)/days*100}%" data-event="${event.id}" aria-label="${esc(event.title+' · '+p.title+' '+format(p.at,{year:true}))}" title="${esc(p.title+' '+format(p.at))}"></button>`).join('');
         const deadline=event.time_kind==='point'?`<strong>${esc(format(event.start.at))}</strong><span>更新节点</span>`:event.end.at?`<strong>${esc(format(event.end.at))}</strong><span>${event.end.state==='estimated'?'预计结束':countdownSlot(event.end.at)}</span>`:`<strong class="pending-label">截止待定</strong><span>${event.end.reference==='recruitment_cycles'?'按寻访次数结束':'等待后续公告'}</span>`;
-        return `<div data-row-event="${event.id}" data-order-root="${esc((event._group_event||event).id)}" data-order-group="${esc(category)}" data-game="${event.game}" class="timeline-row ${event.completed?'completed':''}" style="--tree-depth:${event._tree_depth||0};--event-accent:${accent(event)};--game-color:${esc(W.game(event.game)?.color||'#6D8658')}"><div class="event-name-cell"><button type="button" class="event-name" data-event="${event.id}" style="--category:${definition.color}"><span class="event-avatar" title="点击图标只看${esc(gameLabel(event))}">${gameIcon(event.game)}</span><span class="event-name-text"><strong>${event.starred?'★ ':''}${esc(cleanTitle(event))}</strong><small><span class="game-label">${esc(gameLabel(event))}</span> · ${esc(event.subtype)} · ${esc(status(event))}</small></span></button><div class="event-row-tools"><button type="button" class="event-star" data-event-star="${event.id}" aria-pressed="${event.starred}" aria-label="${event.starred?'取消收藏':'收藏'}：${esc(cleanTitle(event))}" title="${event.starred?'取消收藏':'收藏活动'}">${event.starred?'★':'☆'}</button><button type="button" class="event-done" data-event-complete="${event.id}" aria-pressed="${event.completed}" aria-label="${event.completed?'撤销完成':'标记完成'}：${esc(cleanTitle(event))}" title="${event.completed?'撤销完成':'标记完成'}">${event.completed?'↶':'✓'}</button>${!event._tree_depth?`<button type="button" class="event-order-handle" data-order-handle="${event.id}" aria-label="拖动排序：${esc(cleanTitle(event))}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title="长按拖动排序">⋮⋮</button>`:''}</div>${P.familyControls(event)}</div><div class="bar-cell"><span class="today-column" style="--today-left:${(today-lo)/days*100}%" ${today<lo||today>=hi?'hidden':''}></span><span class="now-line" data-now-line="${lo},${days}" ${today<lo||today>=hi?'hidden':''}></span>${bar(event,lo,hi)}${markers}</div><button type="button" class="deadline-cell" data-event="${event.id}">${deadline}</button>${W.game(event.game)?.currency?`<button type="button" class="reward-cell" data-event="${event.id}" aria-label="${esc(cleanTitle(event))}的嵌晶玉奖励">${rewardBadge(event)}</button>`:'<span class="reward-cell reward-none" aria-hidden="true"></span>'}</div>`;
+        const tools=embedded?'':`<div class="event-row-tools"><button type="button" class="event-star" data-event-star="${event.id}" aria-pressed="${event.starred}" aria-label="${event.starred?'取消收藏':'收藏'}：${esc(cleanTitle(event))}" title="${event.starred?'取消收藏':'收藏活动'}">${event.starred?'★':'☆'}</button><button type="button" class="event-done" data-event-complete="${event.id}" aria-pressed="${event.completed}" aria-label="${event.completed?'撤销完成':'标记完成'}：${esc(cleanTitle(event))}" title="${event.completed?'撤销完成':'标记完成'}">${event.completed?'↶':'✓'}</button>${!event._tree_depth?`<button type="button" class="event-order-handle" data-order-handle="${event.id}" aria-label="拖动排序：${esc(cleanTitle(event))}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" title="长按拖动排序">⋮⋮</button>`:''}</div>${P.familyControls(event)}`;
+        const reward=embedded?'':W.game(event.game)?.currency?`<button type="button" class="reward-cell" data-event="${event.id}" aria-label="${esc(cleanTitle(event))}的嵌晶玉奖励">${rewardBadge(event)}</button>`:'<span class="reward-cell reward-none" aria-hidden="true"></span>';
+        return `<div data-row-event="${event.id}" data-order-root="${esc((event._group_event||event).id)}" data-order-group="${esc(category)}" data-game="${event.game}" class="timeline-row ${event.completed?'completed':''}" style="--tree-depth:${event._tree_depth||0};--event-accent:${accent(event)};--game-color:${esc(W.game(event.game)?.color||'#6D8658')}"><div class="event-name-cell"><button type="button" class="event-name" data-event="${event.id}" style="--category:${definition.color}"><span class="event-avatar"${embedded?'':` title="点击图标只看${esc(gameLabel(event))}"`}>${gameIcon(event.game)}</span><span class="event-name-text"><strong>${event.starred?'★ ':''}${esc(cleanTitle(event))}</strong><small><span class="game-label">${esc(gameLabel(event))}</span> · ${esc(event.subtype)} · ${esc(status(event))}</small></span></button>${tools}</div><div class="bar-cell"><span class="today-column" style="--today-left:${(today-lo)/days*100}%" ${today<lo||today>=hi?'hidden':''}></span><span class="now-line" data-now-line="${lo},${days}" ${today<lo||today>=hi?'hidden':''}></span>${bar(event,lo,hi,{embedded})}${markers}</div><button type="button" class="deadline-cell" data-event="${event.id}">${deadline}</button>${reward}</div>`;
       }).join('');
     }).join('');
-    return `<div class="timeline-scroll"><div class="timeline ${S.game==='arknights-cn'?'arknights-timeline':''} ${S.fit?'fit-version':''}" style="--days:${days};min-width:${S.fit?Math.max(1000,456+days*10):Math.max(840,296+days*28)}px"><div class="timeline-head"><div class="timeline-label">活动 / 开放状态 · 标题完整显示</div><div class="day-axis">${axis}</div><div class="timeline-deadline-head">截止 / 更新时刻<span>${esc(zone())}</span></div><div class="timeline-reward-head">嵌晶玉<span>${combined()?'仅终末地':'活动总量'}</span></div></div>${P.creationRow()}${plans}${rows}</div></div>`;
+    const width=embedded?244+days*36:fit?Math.max(1000,456+days*10):Math.max(840,296+days*28);
+    const rewardHeading=embedded?'':`<div class="timeline-reward-head">嵌晶玉<span>${combined()?'仅终末地':'活动总量'}</span></div>`;
+    return `<div class="timeline-scroll"><div class="timeline ${S.game==='arknights-cn'?'arknights-timeline':''} ${fit?'fit-version':''}" style="--days:${days};min-width:${width}px"><div class="timeline-head"><div class="timeline-label">活动 / 开放状态${embedded?'':' · 标题完整显示'}</div><div class="day-axis">${axis}</div><div class="timeline-deadline-head">截止 / 更新时刻<span>${esc(zone())}</span></div>${rewardHeading}</div>${creation}${plans}${rows}</div></div>`;
+  }
+  function mountTimeline(el,{date,days=14,onOpenEvent,onDay,onOpenPlan}={}) {
+    if(!(el instanceof HTMLElement)||el.classList.contains('embedded-timeline'))throw new Error('请为时间轴提供独立容器');
+    days=[7,14,28].includes(days)?days:14;
+    const today=()=>Math.floor(civil(now()));
+    const dayKey=serial=>serialDate(serial).toISOString().slice(0,10);
+    let anchor=today(),destroyed=false;
+    const period=document.createElement('output'),content=document.createElement('div');
+    period.setAttribute('aria-live','polite');
+    const nav=document.createElement('nav');nav.className='embedded-timeline-nav';nav.setAttribute('aria-label','时间轴日期范围');
+    nav.innerHTML='<button type="button" data-timeline-step="-1" aria-label="上一段">‹</button><button type="button" data-timeline-step="0">今天</button><button type="button" data-timeline-step="1" aria-label="下一段">›</button>';
+    nav.append(period);el.classList.add('embedded-timeline');el.replaceChildren(nav,content);
+    function update({date,resetScroll=false}={}) {
+      if(destroyed)return;
+      if(typeof date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(date)){
+        const serial=Date.parse(date)/DAY;
+        if(Number.isFinite(serial)&&dayKey(serial)===date)anchor=serial;
+      }
+      const hi=anchor+days,rangeText=`${shortDay(anchor,true)} – ${shortDay(hi-1)}`;
+      if(period.textContent!==rangeText)period.textContent=rangeText;
+      if(!S.data){patch(content,'<p class="empty-state">正在读取本地日历…</p>');return;}
+      const events=P.filterFocus(baseFilteredEvents()).filter(e=>overlaps(e,anchor,hi));
+      const left=resetScroll?0:content.querySelector('.timeline-scroll')?.scrollLeft||0;
+      const changed=patch(content,renderTimeline(events,anchor,hi,{embedded:true,openPlans:typeof onOpenPlan==='function'}));
+      const scroller=content.querySelector('.timeline-scroll');
+      if(scroller&&(changed||resetScroll))scroller.scrollLeft=left;
+      syncTime(content);
+    }
+    function click(event){
+      const button=event.target.closest('button');if(!button||!el.contains(button))return;
+      const {timelineStep,event:id,deadlineDay,plan}=button.dataset;
+      if(timelineStep!==undefined){anchor=timelineStep==='0'?today():anchor+Number(timelineStep)*days;update({resetScroll:true});}
+      else if(id)onOpenEvent?.(id,button);
+      else if(deadlineDay)onDay?.(deadlineDay,button);
+      else if(plan)onOpenPlan?.(plan,button);
+      else return;
+      event.stopPropagation();
+    }
+    el.addEventListener('click',click);update({date});
+    return {get date(){return dayKey(anchor);},update,destroy(){
+      if(destroyed)return;destroyed=true;
+      el.removeEventListener('click',click);el.classList.remove('embedded-timeline');el.replaceChildren();
+    }};
   }
   function renderList(events) {
     if(!events.length) return emptyCalendar();
@@ -574,12 +626,34 @@
   }
   function renderMonth(events,monthStart,monthEnd) {
     const first=monthGrid(monthStart,monthEnd)[0], weeks=Math.ceil((monthEnd-first)/7), today=Math.floor(civil(now()));
-    let html='<div class="month-head">'+['一','二','三','四','五','六','日'].map(day=>`<span>周${day}</span>`).join('')+'</div>';
+    const counts=new Map();
+    for(let day=first;day<first+weeks*7;day++)counts.set(day,P.density(day).rows.length);
+    const currentMonth=[...counts].filter(([day])=>day>=monthStart&&day<monthEnd);
+    const maximum=Math.max(0,...currentMonth.map(([,count])=>count));
+    const peaks=maximum?currentMonth.filter(([,count])=>count===maximum).map(([day])=>day):[];
+    const peakDates=peaks.map(day=>{
+      const date=serialDate(day);
+      return `${date.getUTCMonth()+1}/${date.getUTCDate()}`;
+    });
+    const summary=maximum?`最多 ${maximum} 项 · ${peakDates.slice(0,3).join('、')}${peaks.length>3?` 等 ${peaks.length} 天`:''}`:'本月无明确截止';
+    let html=`<div class="month-density-scale"><span><strong>本月截止密度</strong>填充越高，当天截止越集中</span><span class="month-density-summary" title="${esc(peakDates.join('、'))}">${esc(summary)}</span></div>`;
+    html+='<div class="month-head">'+['一','二','三','四','五','六','日'].map(day=>`<span>周${day}</span>`).join('')+'</div>';
     for(let week=0;week<weeks;week++) {
       const lo=first+week*7,hi=lo+7;
       const cells=Array.from({length:7},(_,i)=>{
-        const day=lo+i,date=serialDate(day),count=P.density(day).rows.length;
-        return `<div class="month-cell density-level-${Math.min(3,count)} ${day<monthStart||day>=monthEnd?'outside':''} ${day===today?'today':''}"><button type="button" class="month-date" data-day="${day}" aria-label="${shortDay(day,true)}当日明细">${date.getUTCDate()}${day===today?' · 今天':''}</button>${P.densityButton(day,true)}${P.monthPlans(day)}</div>`;
+        const day=lo+i,date=serialDate(day),count=counts.get(day),outside=day<monthStart||day>=monthEnd;
+        const peak=!outside&&count>0&&count===maximum;
+        const fill=!outside&&maximum?count/maximum*100:0;
+        const dayKey=date.toISOString().slice(0,10);
+        const label=`${shortDay(day,true)}，${count} 项截止${peak?'，本月最多':''}，查看当天截止活动`;
+        return `<div class="month-cell ${outside?'outside':''} ${day===today?'today':''} ${peak?'month-density-peak':''}" data-deadline-count="${count}" style="--deadline-fill:${fill}%">
+          <span class="month-density-fill" aria-hidden="true"></span>
+          <button type="button" class="month-day-button" data-deadline-day="${dayKey}" aria-label="${esc(label)}">
+            <span class="month-date-heading"><span class="month-date" data-day="${day}">${outside?`${date.getUTCMonth()+1}/`:''}${date.getUTCDate()}${day===today?' · 今天':''}</span>${peak?'<span class="month-peak-badge">最多</span>':''}</span>
+            ${count?`<span class="month-cutoff-count"><strong>${count}</strong> 项截止</span>`:''}
+          </button>
+          ${P.monthPlans(day)}
+        </div>`;
       }).join('');
       html+=`<div class="month-week deadline-month">${cells}</div>`;
     }
@@ -592,9 +666,8 @@
   }
   function openDialog(selector) {
     const dialog=$(selector);
-    M.opened(dialog);
     if(['#detail-dialog','#agenda-dialog','#reward-dialog','#rules-dialog'].includes(selector))addOfficialTimeNotice(dialog);
-    if(!dialog.open) dialog.showModal();
+    J.open(dialog);
   }
   function addOfficialTimeNotice(dialog) {
     const body=dialog.querySelector('.dialog-body');
@@ -603,22 +676,31 @@
       note.textContent='具体活动情况请参考游戏官方时间';body.prepend(note);
     }
   }
-  function openEvent(id) {
+  function openEvent(id,{replace=false}={}) {
+    if(!replace&&$('#detail-dialog').open&&S.selected!==id){J.leave(()=>openEvent(id,{replace:true}));return;}
     if(P.creating)P.stopCreating();
     const event=allEvents().find(e=>e.id===id);
-    if(!event) return;
+    if(!event) {toast('这条活动已不在本地日历中',true);return;}
     S.selected=id;P.selectEvent(id);
-    for(const d of document.querySelectorAll('.feature-dialog[open]'))d.close();
-    if($('#agenda-dialog').open) $('#agenda-dialog').close();
     renderDetail(event);openDialog('#detail-dialog');
   }
-  async function locateEvent(id){
+  async function locateEvent(id,{confirmed=false}={}){
+    if(!confirmed&&J.hasDraft){J.leaveAll(()=>locateEvent(id,{confirmed:true}));return;}
     const event=allEvents().find(e=>e.id===id);
     if(!event){toast('活动已不在当前日历缓存中',true);return;}
+    if(S.scoping){toast('正在切换游戏，请稍候再定位',true);return;}
     if(P.creating)P.stopCreating();
-    for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
     if(!event.start.at||event.invalid_interval||event.ignored){openEvent(id);return;}
-    if(S.game!=='all'&&(S.game==='selected'?!W.selected().includes(event.game):S.game!==event.game))await selectScope(event.game,[event.game]);
+    const serial=S.locateSerial=(S.locateSerial||0)+1;
+    S.locationOrigin=S.locationOrigin||{
+      game:S.game,games:[...W.selected()],version:S.version,view:S.view,days:S.days,fit:S.fit,anchor:S.anchor,explicitAnchor:S.explicitAnchor,
+      search:$('#event-search').value,categories:[...S.categories],includePending:S.includePending,
+      dialog:document.querySelector('dialog[open]')?.id,ui:J.snapshot()
+    };
+    J.clear();
+    const switching=S.game!=='all'&&(S.game==='selected'?!W.selected().includes(event.game):S.game!==event.game)?selectScope(event.game,[event.game],false,{location:true}):Promise.resolve();
+    const intent=S.dateIntent||0;await switching;
+    if(serial!==S.locateSerial||(S.dateIntent||0)!==intent)return;
     if(!combined()&&S.game===event.game)S.version=event.version_id;
     if(!scopeEvents().some(e=>e.id===id)){toast('无法切换到该活动的游戏范围',true);return;}
     if(S.view!=='timeline'){S.view='timeline';S.fit=false;S.days=Number($('#range-select').value);}
@@ -627,13 +709,35 @@
     const row=$(`#calendar [data-row-event="${CSS.escape(id)}"]`);
     if(row?.checkVisibility())M.locate(row);else{openEvent(id);toast('日历模块未展开，已打开活动详情');}
   }
+  function cancelLocation(){S.located=null;S.locationOrigin=null;S.locateSerial=(S.locateSerial||0)+1;}
+  async function returnFromLocation(){
+    const origin=S.locationOrigin;
+    if(!origin){cancelLocation();render();return;}
+    if(S.scoping)return;
+    const serial=S.locateSerial=(S.locateSerial||0)+1;
+    if(origin.game!==S.game||JSON.stringify(origin.games)!==JSON.stringify(W.selected())){
+      const switching=selectScope(origin.game,origin.games,false,{location:true}),intent=S.dateIntent||0;
+      await switching;if(serial!==S.locateSerial||(S.dateIntent||0)!==intent)return;
+      if(S.game!==origin.game){toast('原游戏范围已不可用，已保留当前日历',true);cancelLocation();render();return;}
+    }
+    Object.assign(S,{version:origin.version,view:origin.view,days:origin.days,fit:origin.fit,anchor:origin.anchor,explicitAnchor:origin.explicitAnchor,categories:new Set(origin.categories),includePending:origin.includePending});
+    $('#event-search').value=origin.search;$('#include-pending').checked=origin.includePending;cancelLocation();buildFilters();render();
+    if(origin.dialog){if(origin.dialog==='reminder-dialog')renderInbox();openDialog('#'+origin.dialog);}
+    J.restore(origin.ui);
+  }
   function endpointDetail(endpoint,role,event) {
     if(role==='end'&&event.time_kind==='point') return '<div class="detail-time-value">更新节点</div><div class="detail-time-state">公告未设活动截止时间</div>';
     const value=endpoint.at?format(endpoint.at,{year:true}):'尚未公布';
     const basis=endpoint.reference==='briefing_explicit'?'官方版本导览明确':endpoint.reference==='activity_start'?'兑换开始未单列，暂按活动开始展示':endpoint.state==='unknown'?(referenceLabels[endpoint.reference]||'需要核对来源'):endpoint.state==='exact'&&event.game==='arknights-cn'?(event.source.kind==='official'?'官网国服明确时间':'PRTS 国服明确时间'):endpointLabels[endpoint.state];
     return `<div class="detail-time-value">${esc(value)}</div><div class="detail-time-state">${esc(basis)}</div>`;
   }
-  function renderDetail(event) {
+  function renderDetail(event,{savedForm=null}={}) {
+    if(!event)return;
+    const previous=S.detailEvent===event.id?detailFields():null;
+    const baseline=new Map(JSON.parse(S.detailBaseline||'[]'));
+    const pending=(previous||[]).filter(([id,value])=>value!==baseline.get(id)&&!(savedForm&&$('#'+id)?.closest('#'+savedForm)));
+    const body=$('#detail-content .dialog-body'),scroll=body?.scrollTop||0;
+    const disclosures=[...$('#detail-content').querySelectorAll('details')].map(n=>n.open);
     const detailFocus=$('#detail-content').contains(document.activeElement)?document.activeElement.id:null;
     const cat=categories[event.category], isMaintenance=event.category==='maintenance', serverZone=W.game(event.game)?.timezone||'UTC';
     const upcoming=event.start.at&&Date.parse(event.start.at)>now();
@@ -692,8 +796,13 @@
       $('#detail-content .source-link').after(panel);
     }
     addOfficialTimeNotice($('#detail-dialog'));P.detail(event);window.PlaytimeUX?.detail(event);
+    S.detailEvent=event.id;
+    S.detailBaseline=JSON.stringify(detailFields());
+    for(const [id,value]of pending){const el=$('#'+id);if(el)el.value=value;}
+    if(previous){[...$('#detail-content').querySelectorAll('details')].forEach((n,i)=>n.open=disclosures[i]||false);$('#detail-content .dialog-body').scrollTop=scroll;}
     if(detailFocus)$('#'+CSS.escape(detailFocus))?.focus({preventScroll:true});
   }
+  function detailFields(){return [...$('#detail-content').querySelectorAll('#event-edit-form input,#event-edit-form textarea,#event-edit-form select,#maintenance-form input,#maintenance-form select')].map(n=>[n.id,n.value]);}
   function openAgenda(day) {
     const events=filteredEvents().filter(e=>overlaps(e,day,day+1)).sort((a,b)=>Date.parse(a.start.at)-Date.parse(b.start.at));
     $('#agenda-title').textContent=shortDay(day,true)+' · '+events.length+' 项';
@@ -770,7 +879,7 @@
   }
   async function switchView(view) {
     if(S.view===view) return;
-    S.located=null;
+    cancelLocation();
     S.dateIntent=(S.dateIntent||0)+1;
     if(view==='month')S.anchor=W.view.focus.date?Date.parse(W.view.focus.date)/DAY:S.explicitAnchor??Math.floor(civil(now()));
     S.view=view;S.fit=false;S.days=Number($('#range-select').value);
@@ -789,6 +898,7 @@
     await P.queueFocus(()=>mutate('/api/workspace',{view:{hide_future:false,...((S.focusWrites||0)===focusWrites?{focus:{date:null,event_id:null}}:{})}},'PATCH'));
   }
   async function fitVersion() {
+    cancelLocation();
     if(S.fit) {S.fit=false;S.days=Number($('#range-select').value);S.anchor=Math.floor(civil(now()));render();return;}
     const switching=switchView('timeline'),intent=S.dateIntent||0;
     await switching;
@@ -803,7 +913,7 @@
     S.fit=true;S.anchor=lo;S.days=Math.max(7,hi-lo);render();
   }
   function movePeriod(direction) {
-    S.located=null;
+    cancelLocation();
     S.dateIntent=(S.dateIntent||0)+1;
     if(S.fit) {S.fit=false;S.days=Number($('#range-select').value);}
     if(S.view==='timeline') S.anchor+=direction*S.days;
@@ -816,11 +926,7 @@
     if(!target) return;
     if(target.hasAttribute('data-close')) { target.closest('dialog').close();return; }
     if(target.dataset.locateEvent&&S.data){await locateEvent(target.dataset.locateEvent);return;}
-    if(target.dataset.event) {
-      if($('#reminder-dialog').open) $('#reminder-dialog').close();
-      if($('#reward-dialog').open) $('#reward-dialog').close();
-      openEvent(target.dataset.event);return;
-    }
+    if(target.dataset.event) {openEvent(target.dataset.event);return;}
     if(target.dataset.day) {P.deadlines(Number(target.dataset.day),'activities');return;}
     if(target.dataset.unhide) {
       switch(target.dataset.unhide){
@@ -875,8 +981,8 @@
       case 'reward-details':openRewardDetails();break;
       case 'previous-period':movePeriod(-1);break;
       case 'next-period':movePeriod(1);break;
-      case 'today-button':S.located=null;S.dateIntent=(S.dateIntent||0)+1;S.fit=false;S.days=Number($('#range-select').value);S.explicitAnchor=S.anchor=Math.floor(civil(now()));render();break;
-      case 'clear-location':S.located=null;render();$('#timeline-view').focus({preventScroll:true});break;
+      case 'today-button':cancelLocation();S.dateIntent=(S.dateIntent||0)+1;S.fit=false;S.days=Number($('#range-select').value);S.explicitAnchor=S.anchor=Math.floor(civil(now()));render();break;
+      case 'clear-location':await returnFromLocation();break;
       case 'upcoming-view':await switchView('upcoming');break;
       case 'sidebar-more':paintSidebar(!$('.sidebar').classList.contains('sidebar-expanded'));break;
       case 'heading-toggle':local.set('heading.v1',headingCompact()?'full':'compact');paintHeading();W.renderModules();break;
@@ -967,11 +1073,11 @@
       case 'event-sort':await mutate('/api/workspace',{view:{sort:target.value}},'PATCH');break;
       case 'event-group':await mutate('/api/workspace',{view:{group_by:target.value}},'PATCH');break;
       case 'game-select':
-        for(const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+        J.clear();
         await selectScope(target.value,target.value==='all'?S.data.games.map(g=>g.id):target.value==='selected'?W.selected():[target.value],true);break;
-      case 'version-select':S.dateIntent=(S.dateIntent||0)+1;S.explicitAnchor=null;S.version=target.value;S.anchor=Math.floor(civil(activeVersion().maintenance.start||now()));render();break;
+      case 'version-select':cancelLocation();S.dateIntent=(S.dateIntent||0)+1;S.explicitAnchor=null;S.version=target.value;S.anchor=Math.floor(civil(activeVersion().maintenance.start||now()));render();break;
       case 'timezone-select':await mutate('/api/settings',{timezone:target.value});if(W.view.focus.date)await mutate('/api/workspace',{view:{focus_timezone:zone()}},'PATCH');break;
-      case 'range-select':S.dateIntent=(S.dateIntent||0)+1;S.fit=false;S.days=Number(target.value);render();break;
+      case 'range-select':cancelLocation();S.dateIntent=(S.dateIntent||0)+1;S.fit=false;S.days=Number(target.value);render();break;
       case 'hide-completed':await mutate('/api/settings',{hide_completed:target.checked});break;
       case 'include-pending':S.includePending=target.checked;render();break;
       case 'reminders-enabled':await mutate('/api/settings',{reminders_enabled:target.checked});break;
@@ -988,6 +1094,7 @@
   document.addEventListener('submit',async event=>{
     if(event.target.id==='event-edit-form') {
       event.preventDefault();
+      if(S.detailSaving)return;
       const patch={notes:$('#edit-notes').value};
       // Unchanged endpoints are not sent, so their stored UTC value (with seconds) stays exactly as it was.
       for(const role of ['start','end']) {
@@ -996,14 +1103,20 @@
         patch[role+'_local']=input.value||null;patch.timezone=zone();
         if(fold!=='')patch['fold_'+role]=Number(fold);
       }
-      if(await mutate('/api/events/'+S.selected,patch,'PATCH')) {renderDetail(allEvents().find(e=>e.id===S.selected));toast('校正与备注已保存在本机');}
+      const id=S.selected,controls=[...event.target.querySelectorAll('input,textarea,select,button')];
+      S.detailSaving=true;controls.forEach(n=>n.disabled=true);
+      try{if(await mutate('/api/events/'+id,patch,'PATCH')&&S.selected===id){renderDetail(allEvents().find(e=>e.id===id),{savedForm:'event-edit-form'});toast('校正与备注已保存在本机');}}
+      finally{S.detailSaving=false;controls.forEach(n=>n.disabled=false);}
     } else if(event.target.id==='maintenance-form') {
       event.preventDefault();
+      if(S.detailSaving)return;
       const value=$('#actual-maintenance-end').value;
       if(!value) {toast('请先填写实际开服时间',true);return;}
       const selected=allEvents().find(e=>e.id===S.selected);
       const fold=$('#actual-maintenance-fold').value;
-      if(await mutate('/api/versions/'+selected.version_id+'/maintenance',{actual_local:value,timezone:zone(),...(fold!==''?{fold:Number(fold)}:{})})) {renderDetail(allEvents().find(e=>e.id===S.selected));toast('已更新本版本所有关联开服时间');}
+      const controls=[...event.target.querySelectorAll('input,select,button')];S.detailSaving=true;controls.forEach(n=>n.disabled=true);
+      try{if(await mutate('/api/versions/'+selected.version_id+'/maintenance',{actual_local:value,timezone:zone(),...(fold!==''?{fold:Number(fold)}:{})})&&S.selected===selected.id){renderDetail(allEvents().find(e=>e.id===selected.id),{savedForm:'maintenance-form'});toast('已更新本版本所有关联开服时间');}}
+      finally{S.detailSaving=false;controls.forEach(n=>n.disabled=false);}
     }
   });
   document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{
@@ -1013,15 +1126,24 @@
   }));
   async function refresh() {
     if(S.scoping||S.activeWrites)return;
+    const read=S.readSerial=(S.readSerial||0)+1;
     const generation=S.scopeGeneration,writes=S.writes;
+    const current=()=>read===S.readSerial&&generation===S.scopeGeneration&&writes===S.writes;
     try {
       // The tag names the state last taken from a poll; any other state applied since clears it.
       const response=await fetch('/api/state',{headers:S.stateTag?{'If-None-Match':S.stateTag}:{}});
-      if(response.status===304){if(S.data)render();return;} // Unchanged data; render still follows the clock.
+      if(response.status===304){
+        if(current()&&S.data){
+          render();if(loadFailure){loadFailure=null;androidSource?.publish();}
+        }
+        return;
+      }
       const data=await response.json();if(!response.ok)throw new Error(data.error||'请求失败');
-      if(generation===S.scopeGeneration&&writes===S.writes){applyState(data);S.stateTag=response.headers.get('ETag');}
+      if(current()){applyState(data);S.stateTag=response.headers.get('ETag');}
     }
     catch(error) {
+      if(!current())return;
+      if(loadFailure!==error.message){loadFailure=error.message;androidSource?.publish();}
       if(!S.data) {$('#load-error').textContent='无法连接本地程序：'+error.message+'。请运行 start.ps1 或 python app.py。';$('#load-error').hidden=false;}
       else {$('#source-status').textContent='本地连接已断开，请检查程序是否仍在运行。现有日历保留显示。';$('#source-status').classList.add('warning');}
     }
@@ -1040,6 +1162,12 @@
     if(calendar.collapsed){calendar.collapsed=false;if(!await mutate('/api/workspace',{layout},'PATCH'))throw new Error('请先展开日历模块。');}
     render();
   }
+  J.init({toast});
+  J.register('#detail-dialog',{label:'活动详情',dirty:()=>JSON.stringify(detailFields())!==S.detailBaseline,busy:()=>S.detailSaving,discard:()=>{S.detailEvent=null;},refresh:()=>{
+    const event=allEvents().find(e=>e.id===S.selected);
+    if(event)renderDetail(event);
+    else if(!$('#detail-unavailable')){const note=document.createElement('p');note.id='detail-unavailable';note.className='form-error';note.setAttribute('role','status');note.textContent='这条活动已不在最新日历中。保留当前内容与未保存输入，可返回原列表。';$('#detail-content .dialog-body')?.prepend(note);}
+  }});
   P.init({state:()=>S.data,game:()=>S.game,zone,dateParts,format,civil,range,isTimeline:()=>S.view==='timeline',timelineEvents:()=>{const[lo,hi]=range();return P.arrange(filteredEvents().filter(e=>overlaps(e,lo,hi)));},prepareTimeline:preparePlanning,render,toast,baseEvents:baseFilteredEvents,events:filteredEvents,api,mutate,applyState,openDialog,openAgenda,openEvent});
   R.init({
     enabled:()=>!!S.data&&S.view==='timeline'&&!P.creating&&!S.scoping,
@@ -1048,8 +1176,60 @@
   });
   window.PlaytimeCustomize.init({state:()=>S.data,mutate,openDialog,api,refresh,toast});
   window.PlaytimeUX.init({state:()=>S.data,game:()=>S.game,version:activeVersion,progress:syncProgress,zone,format,mutate,openReminders,render,toast});
+  async function shellFilters(patch) {
+    const settings={},view={};
+    if('hideCompleted' in patch)settings.hide_completed=patch.hideCompleted;
+    if('hideFuture' in patch)view.hide_future=patch.hideFuture;
+    if('sort' in patch)view.sort=patch.sort;
+    if(Object.keys(settings).length)applyState(await api('/api/settings','POST',settings));
+    if(Object.keys(view).length)applyState(await api('/api/workspace','PATCH',{view}));
+    if(patch.types){
+      for(const [id,enabled] of Object.entries(patch.types)){
+        if(enabled)S.categories.add(id);else S.categories.delete(id);
+      }
+      buildFilters();
+    }
+    if('showPending' in patch)$('#include-pending').checked=S.includePending=patch.showPending;
+    if(patch.clearSearch)$('#event-search').value='';
+    render();androidSource.publish();
+  }
+
+  async function startAndroidShell() {
+    const assets=[Object.assign(document.createElement('link'),{rel:'stylesheet',href:'/shell/shell.css'}),
+      ...['/shell-source.js','/shell/shell.js'].map(src=>Object.assign(document.createElement('script'),{src}))];
+    let root;
+    try {
+      await Promise.all(assets.map(asset=>new Promise((resolve,reject)=>{
+        asset.onload=resolve;asset.onerror=reject;document.head.append(asset);
+      })));
+      androidSource=window.PlaytimeShellSource.create({
+        data:()=>S.data,error:()=>loadFailure,game:()=>S.game,version:()=>S.version,
+        filters:()=>({types:Object.fromEntries(Object.keys(categories).map(id=>[id,S.categories.has(id)])),
+          showPending:S.includePending,hideFuture:W.view.hide_future,hideCompleted:S.data.settings.hide_completed,
+          sort:W.view.sort,search:searchQuery()}),
+        scopeEvents,baseEvents:baseFilteredEvents,upcomingEvents:filteredEvents,upcoming:upcomingRows,deadlines:P.deadlineNodes,
+        now,zone,dateParts,format,countdown,progress:syncProgress,refresh,
+        selectScope:(game,ids)=>selectScope(game,ids,true,{shell:true}),filtersWrite:shellFilters,
+        write:async(path,method,body)=>{const data=await api(path,method,body);applyState(data);return data;},
+        appearance:()=>local.get('android.appearance','system'),saveAppearance:mode=>local.set('android.appearance',mode),
+        mountTimeline
+      });
+      root=document.createElement('div');root.id='pt-shell';document.body.append(root);
+      document.documentElement.dataset.shell='android';
+      if(!window.PlaytimeShell.start({root,source:androidSource.source}))throw new Error('安卓界面无法启动');
+      document.documentElement.dataset.shellReady='true';
+    } catch(error) {
+      window.PlaytimeShell?.stop();root?.remove();androidSource=null;
+      delete document.documentElement.dataset.shell;
+      assets.forEach(asset=>asset.remove());
+      toast('安卓界面加载失败，已打开网页日历',true);
+      console.error(error);
+    }
+  }
+  if(androidRequested)startAndroidShell();
+
   refresh();
   S.pollTimer=setInterval(refresh,10000);
-  setInterval(()=>{if(S.data){renderClock();syncTime();}},30000);
+  setInterval(()=>{if(S.data){renderClock();syncTime();androidSource?.tick();}},30000);
   window.addEventListener('focus',()=>{if(S.initialized) refresh();});
 })();

@@ -3,21 +3,22 @@
 const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn}=require('node:child_process');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
-const base='http://127.0.0.1:8816';
 (async()=>{
+  const port=await require('./free-port.cjs')(),base='http://127.0.0.1:'+port;
   const dir=path.resolve('logs/focus-queue-e2e','data-'+Date.now());await fs.mkdir(dir,{recursive:true});
   await fs.cp('examples/plugins/sample-game',path.join(dir,'plugins/sample-game'),{recursive:true});
-  const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port','8816','--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
+  const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
   try{
     for(let i=0;i<50;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===49)throw Error('Server failed');await new Promise(r=>setTimeout(r,200));}
     const state=async()=>await(await fetch(base+'/api/state')).json(),token=(await state()).csrf_token;
     const update=async(p,b)=>assert.equal((await fetch(base+p,{method:'PATCH',headers:{'Content-Type':'application/json','X-Calendar-Token':token},body:JSON.stringify(b)})).status,200);
-    browser=await chromium.launch({channel:'msedge',headless:true});
+    browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});
     // hold(url, body) picks the one request to pause; it is released by window.__release().
     async function run(label,hold){
       await update('/api/settings',{view:'timeline',hide_completed:false,active_game:'sample-game'});
       await update('/api/workspace',{view:{scope:'single',selected_games:['sample-game'],focus:{date:null,event_id:null}}});
       const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'zh-CN',timezoneId:'America/New_York'}),errors=[];
+      await page.clock.setFixedTime(new Date('2026-10-27T20:00:00Z'));
       page.on('pageerror',e=>errors.push(e.message));
       await page.addInitScript(()=>{const original=setInterval;window.setInterval=(fn,ms,...args)=>ms===10000?0:original(fn,ms,...args);}); // No timed polls.
       await page.goto(base);await page.locator('#calendar .event-name').first().waitFor();

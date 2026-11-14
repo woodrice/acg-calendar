@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light, and dark under values-night: the WebView reports prefers-color-scheme from this
+         theme (targetSdk 33+), so 我的 → 外观 → 跟随系统 can follow the phone. -->
+    <style name="Playtime" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/playtime_page</item>
+        <item name="android:statusBarColor">@color/playtime_surface</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+    <color name="playtime_page">#F4F4EF</color>
+    <color name="playtime_surface">#FFFFFF</color>
+</resources>

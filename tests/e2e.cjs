@@ -94,6 +94,7 @@ const output='logs/demo-qa';
     assert.equal(await page.locator('.month-more').count(),0);
     await page.locator('.month-date').filter({hasText:'27'}).first().click();
     await page.locator('#deadlines-dialog[open]').waitFor();
+    await page.locator('[data-day-tab="activities"]').click();
     assert.ok(await page.locator('.agenda-event').count()>3);
     await page.locator('.agenda-event').first().click();
     assert.equal(await page.locator('#detail-dialog').evaluate(node=>node.open),true);
