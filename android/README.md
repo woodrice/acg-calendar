@@ -17,7 +17,7 @@ Android 宿主是一个 WebView，内嵌通过 Chaquopy 运行的现有 Python �
 
 ## 构建
 
-需要 JDK 17、Android SDK（platform 35、build-tools 34.0.0，符合 AGP 8.7 的默认要求），以及一个 `tzdata` 包目录（纯 Python，打进包内供 `zoneinfo` 使用）。Gradle Wrapper 固定 8.9，并验证下载 SHA256。`android/local.properties`（不提交）：
+需要 JDK 17、Android SDK（platform 35、build-tools 36.0.0），以及一个 `tzdata` 包目录（纯 Python，打进包内供 `zoneinfo` 使用）。AGP 固定 9.5.1，Gradle Wrapper 固定 9.9.1；Chaquopy 17.2.0 支持这组 AGP。Wrapper JAR 与下载 ZIP 都验证官方 SHA256。升级 AGP 时必须同时核对 Gradle、Build Tools 与 Chaquopy 兼容范围，更新 CI 校验值后运行双 ABI 构建和 lint。参考 [AGP 兼容表](https://developer.android.com/build/releases/agp-9-5-0-release-notes)、[Chaquopy 兼容表](https://chaquo.com/chaquopy/doc/current/versions.html)和 [Gradle 校验值](https://gradle.org/release-checksums/)。`android/local.properties`（不提交）：
 
 ```properties
 sdk.dir=D\:\\Android\\sdk

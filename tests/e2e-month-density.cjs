@@ -36,7 +36,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   let browser;
   try {
     for (let attempt = 0; attempt < 60; attempt++) {
-      try { if ((await fetch(base + '/api/health')).ok) break; } catch {}
+      try { if (await fetch(base + '/api/health').then(async r => { await r.text(); return r.ok; })) break; } catch {}
       if (attempt === 59) throw Error('Isolated server did not start');
       await new Promise(resolve => setTimeout(resolve, 150));
     }
@@ -44,7 +44,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const write = async (url, body) => {
       const data = await state();
       const response = await fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Calendar-Token': data.csrf_token }, body: JSON.stringify(body) });
-      assert.equal(response.ok, true);
+      const bodyText = await response.text();
+      assert.equal(response.ok, true, bodyText);
     };
     await write('/api/settings', { timezone: 'America/New_York' });
     browser = await chromium.launch({ channel: process.env.CALENDAR_BROWSER || 'msedge', headless: true });
