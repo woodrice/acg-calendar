@@ -2,7 +2,7 @@
 
 **规划你的游戏时间。** 把多款游戏的限时活动放进同一条时间轴，在本机查看截止密度、安排个人计划并接收提醒。
 
-当前版本：**V0.3.25**。本版整合网页任务往返、月历截止密度、安卓测试外壳及本机安全修复，见 [更新记录](CHANGELOG.md) 和 [发布说明](docs/releases/v0.3.25.md)。
+当前版本：**V0.3.26**。本版更新安卓构建工具链与 Playwright，并修复网页回归测试的 HTTP 响应清理，见 [更新记录](CHANGELOG.md) 和 [发布说明](docs/releases/v0.3.26.md)。
 
 [下载版本](https://github.com/woodrice/acg-calendar/releases) · [待办](TODO.md) · [使用设置](docs/preferences.md) · [插件接口](docs/plugins.md) · [安全说明](SECURITY.md)
 
@@ -39,7 +39,7 @@
 
 关闭主窗、保留桌面挂件、收起托盘和退出是不同操作，可在桌面设置调整。**更新前从托盘选择“退出游时”**，仅关闭网页或窗口不会停止旧后台。
 
-升级前在设置中创建个人备份，并另外保留旧 `data/`。把新版解压到新目录后迁移旧数据，避免用新包的初始文件覆盖旧数据。详见 [V0.3.25 下载与升级](docs/releases/v0.3.25.md)。
+升级前在设置中创建个人备份，并另外保留旧 `data/`。把新版解压到新目录后迁移旧数据，避免用新包的初始文件覆盖旧数据。详见 [V0.3.26 下载与升级](docs/releases/v0.3.26.md)。
 
 ### 从源码运行网页
 
@@ -127,7 +127,7 @@ CI 包含 Python 3.11–3.14 / Windows、Linux、macOS 后端矩阵、Windows Ed
 
 ### Android 状态
 
-目前为侧载测试版：Android 7.0+ / API 24，target 35，JDK 17、Gradle 8.9、Python 3.13 / Chaquopy。提供 ARM64 与 x86_64，以调试密钥签名，未提供正式发布签名和应用商店分发。Android 的导出、后台常驻和系统提醒不能视为与 Windows 相同。
+目前为侧载测试版：Android 7.0+ / API 24，target 35，JDK 17、AGP 9.5.1、Gradle 9.9.1、Build Tools 36.0.0、Python 3.13 / Chaquopy 17.2.0。提供 ARM64 与 x86_64，以调试密钥签名，未提供正式发布签名和应用商店分发。Android 的导出、后台常驻和系统提醒不能视为与 Windows 相同。
 
 构建见 [Android 说明](android/README.md)，历史测试包见 [交付记录](docs/android-delivery.md)。本次源码及构建验证不会自动替换已交付 APK；真实设备、软键盘、系统栏及低版本 WebView 仍需验收。
 
