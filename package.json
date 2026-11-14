@@ -7,5 +7,5 @@
     "check:js": "node scripts/check-js.cjs",
     "test:web": "node scripts/test-web.cjs"
   },
-  "devDependencies": { "playwright": "1.62.1" }
+  "devDependencies": { "playwright": "1.65.0" }
 }
