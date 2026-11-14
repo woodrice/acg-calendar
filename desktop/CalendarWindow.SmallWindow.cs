@@ -118,8 +118,14 @@ public sealed partial class CalendarWindow
         await Mutate("/api/workspace", new { theme = workspaceDefaults.GetProperty("themes").GetProperty("arknights") }, true);
         await Measure("dark-list-320x320", 320, 320, false, true);
         // A text badge (no logo) must sit on the theme surface, not on white under light theme text.
+        // A prior test may leave a date or recent-only filter which excludes this
+        // sample. Select it explicitly for the badge check, after layout checks.
+        await Mutate("/api/workspace", new { view = new { focus = (object?)null, hide_future = false } }, true);
+        gameSelect.SelectedValue = "sample-game"; await scopeUpdate;
+        showAll = true; selected = null; focusStart = focusEnd = null; Render(); UpdateLayout();
         var textBadge = cards.Children.OfType<Border>().Select(c => (c.Child as Grid)?.Children.OfType<Border>().FirstOrDefault()).FirstOrDefault(b => b?.Child is TextBlock);
-        if (textBadge == null || textBadge.Background == Brushes.White || textBadge.Child is not TextBlock { Foreground: SolidColorBrush ink } || textBadge.Background is not SolidColorBrush plate || Contrast(ink.Color, plate.Color) < 4.5) throw new Exception("A game text badge is unreadable in the dark theme");
+        if (textBadge == null) throw new Exception("The no-logo sample is missing from the dark-theme badge check");
+        if (textBadge.Background == Brushes.White || textBadge.Child is not TextBlock { Foreground: SolidColorBrush ink } || textBadge.Background is not SolidColorBrush plate || Contrast(ink.Color, plate.Color) < 4.5) throw new Exception("A game text badge is unreadable in the dark theme");
         await Measure("dark-bubble-320x320", 320, 320, true, false);
         // Keyboard: every reachable control has a name; Tab walks the quick bar forward and back with a visible focus frame.
         await Measure("keyboard-320x620", 320, 620, false, false);
