@@ -5,12 +5,12 @@ from scripts.release_sources import validate_frontend
 
 class ReleaseSourcesTests(unittest.TestCase):
     def fixture(self):
-        return {"web/index.html": '<script src="/app.js"></script><script src="/journey.js"></script><link rel="stylesheet" href="/styles.css">',
+        return {"web/index.html": '<script src="/app.js"></script><script src="/journey.js"></script><link rel="stylesheet" href="/styles.css"><a href="/disclaimer.html">免责声明</a>',
                 "web/app.js": "const scripts=['/shell-source.js','/shell/shell.js'];", "web/journey.js": "", "web/styles.css": "",
-                "web/shell-source.js": "", "web/shell/shell.js": ""}
+                "web/shell-source.js": "", "web/shell/shell.js": "", "web/disclaimer.html": ""}
 
     def test_missing_static_or_dynamic_assets_block_release(self):
-        for missing in ("web/journey.js", "web/shell-source.js"):
+        for missing in ("web/journey.js", "web/shell-source.js", "web/disclaimer.html"):
             fixture = self.fixture()
             del fixture[missing]
             with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, missing):

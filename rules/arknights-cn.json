@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "ruleset_version": "0.2.0",
+  "ruleset_version": "0.2.1",
   "game_id": "arknights-cn",
   "game_name": "明日方舟",
   "server": "国服",
@@ -16,7 +16,7 @@
     "activity_pattern": "活动|寻访|签到|登录|招募|每日赠送|作战|试炼|限时开放",
     "time_label_pattern": "活动时间|开放时间|开启时间|领取时间|招募期|预选期|兑换时间",
     "campaign_pattern": "庆典|周年|新春|春节|夏日|夏季",
-    "exchange_pattern": "兑换|商店|补给站",
+    "exchange_pattern": "兑换|交换所|商店|补给站",
     "source_policy": "official_dates_first_preserve_cached_wiki_no_automatic_prts_requests"
   },
   "catalog_url": "https://prts.wiki/w/%E6%B4%BB%E5%8A%A8%E4%B8%80%E8%A7%88",

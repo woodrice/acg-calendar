@@ -15,9 +15,11 @@ from acg_calendar.artwork import ArtworkCache
 from acg_calendar.parser import ROOT
 d=Path(sys.argv[1]);s=Store(d/'calendar.sqlite3')
 html=(ROOT/'tests/fixtures/arknights-official-preview.html').read_text(encoding='utf-8')
+gacha=(ROOT/'tests/fixtures/arknights-official-gacha-shop.html').read_text(encoding='utf-8')
 def fetch(url):
-    if url=='https://ak.hypergryph.com/news': return '<a href="/news/111">[活动预告]2026感谢庆典即将开启</a>'
+    if url=='https://ak.hypergryph.com/news': return '<a href="/news/111">[活动预告]2026感谢庆典即将开启</a><a href="/news/4916">【将雪投火】限时寻访即将开启</a>'
     if url=='https://ak.hypergryph.com/news/111': return html
+    if url=='https://ak.hypergryph.com/news/4916': return gacha
     raise AssertionError('Unexpected network URL: '+url)
 images=ArtworkCache(d,downloader=lambda url:(ROOT/'web/assets/arknights-app-icon.png').read_bytes())
 ArknightsCollector(s,d,official_fetcher=fetch,official_cache=images).collect()
@@ -35,13 +37,31 @@ ArknightsCollector(s,d,official_fetcher=fetch,official_cache=images).collect()
     await page.waitForFunction(()=>document.body.dataset.game==='arknights-cn');
     assert.match(await page.locator('#source-status').innerText(),/官网|官方/);
     await page.locator('#reset-filters').click();await page.locator('#list-view').click();
-    await page.waitForFunction(()=>document.querySelectorAll('.catalog-event').length===9);
-    for(const name of ['将雪投火','卫戍寻访','联合行动'])assert.equal(await page.locator('.catalog-event').filter({hasText:name}).count(),1);
+    await page.waitForFunction(()=>document.querySelectorAll('.catalog-event').length===10);
+    for(const name of ['将雪投火','卫戍寻访','联合行动'])assert.equal(await page.locator('.catalog-event').filter({hasText:name,hasNotText:'奖励兑换'}).count(),1);
+    // Dedicated pool notices also contain a later contract-shop deadline; never extend pulls.
+    const poolRow=page.locator('.catalog-event').filter({hasText:'将雪投火',hasNotText:'奖励兑换'});
+    assert.match(await poolRow.innerText(),/11\/14 14:59/);
+    const shopRow=page.locator('.catalog-event').filter({hasText:'将雪投火 · 奖励兑换'});
+    assert.match(await shopRow.innerText(),/11\/17 14:59/);
+    await poolRow.click();
+    assert.match(await page.locator('.detail-time-grid').innerText(),/11\/14 14:59/);
+    await page.locator('.source-box summary').click();
+    assert.match(await page.locator('.source-box').innerText(),/11月15日 03:59/);
+    await page.locator('#detail-dialog [data-close]').click();
     await page.locator('#fit-version').click();
-    await page.waitForFunction(()=>document.querySelectorAll('.timeline-row').length===9);
-    assert.equal(await page.locator('.timeline-row').filter({hasText:'将雪投火'}).count(),1);
+    await page.waitForFunction(()=>document.querySelectorAll('.timeline-row').length===10);
+    assert.equal(await page.locator('.timeline-row').filter({hasText:'将雪投火',hasNotText:'奖励兑换'}).count(),1);
+    await page.clock.setFixedTime(new Date('2026-11-14T12:00:00Z'));
+    for(const style of ['classic','artwork','artwork-fixed']){
+      await page.locator('#timeline-style').selectOption(style);
+      const row=page.locator('.timeline-row').filter({hasText:'将雪投火',hasNotText:'奖励兑换'});
+      assert.match(await row.innerText(),/11\/14 14:59/);
+    }
+    await page.clock.setFixedTime(new Date('2026-10-27T20:00:00Z'));
+    await page.locator('#timeline-style').selectOption('classic');
     await page.locator('[data-category="gacha"]').uncheck();
-    await page.waitForFunction(()=>![...document.querySelectorAll('.timeline-row')].some(n=>n.textContent.includes('将雪投火')));
+    await page.waitForFunction(()=>![...document.querySelectorAll('.timeline-row')].some(n=>n.textContent.includes('将雪投火')&&!n.textContent.includes('奖励兑换')));
     assert.match(await page.locator('#hidden-summary').innerText(),/将雪投火/);
     await page.locator('#hidden-summary [data-unhide="category"]').click();
     await page.locator('#hide-future').check();

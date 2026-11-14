@@ -155,7 +155,11 @@ window.PlaytimeShell=(()=>{
     }else if(id==='about'){
       body=`<div class="ps-list">${info('版本',`游时 ${s.app.version}`)}${info('数据','只保存在本机')}</div>
         <p class="ps-label">日历来源</p><div class="ps-list">${s.games.map(g=>info(g.name,g.source||'官方公告')).join('')}</div>
-        <p class="ps-note">时间按你的时区显示，具体以游戏内公告为准。游时与各游戏官方无关。</p>
+        <h3 class="ps-label">免责声明与使用边界</h3>
+        <p class="ps-note">游时是独立、非官方的本地时间规划工具，不代表任何游戏运营方或信息网站。活动日期、区服、时区换算、头图、奖励及参与条件可能因源站变更、网络、解析错误或缓存过期而遗漏、延迟或出错。同步成功不代表逐项人工核实。</p>
+        <p class="ps-note">重要截止时间请自行核对游戏内及游戏官方最新公告。卡池结束、活动关卡关闭与兑换商店关闭可能是不同时间。提醒可能漏发、延迟或无法送达，勿作为避免错过活动或奖励的唯一依据；请设置必要的备用提醒并备份个人数据。</p>
+        <p class="ps-note">在适用法律允许的范围内，软件按现状提供，不保证信息准确、完整、及时或提醒送达；开发者、维护者及贡献者不对因使用或无法使用本工具导致的错过活动、奖励未领取、游戏内资源损失、数据丢失及相关损失承担责任。本声明不排除或限制依法不得排除或限制的责任。</p>
+        <p class="ps-note">源码继续适用 MIT License，第三方公告、商标、图片及 Wiki 内容归各自权利人，分别适用其许可。</p>
         <a class="ps-source ps-wide" href="https://github.com/woodrice/acg-calendar" target="_blank" rel="noopener">项目主页与反馈 ↗</a>`;
     }else body=`<p class="ps-note">没有这个页面。</p>`;
     return `<h2 class="ps-sub-h">${E(title)}</h2>${body}`;

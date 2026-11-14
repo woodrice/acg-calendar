@@ -16,6 +16,10 @@ def validate_frontend(files, read_text):
     class Assets(HTMLParser):
         def handle_starttag(self, tag, attrs):
             attrs = dict(attrs)
+            if tag == "a" and attrs.get("href", "").startswith("/"):
+                page = urlsplit(attrs["href"])
+                if not page.netloc and page.path.endswith(".html"):
+                    required.add(posixpath.normpath("web/" + page.path.lstrip("/")))
             link = attrs.get("src") if tag == "script" else attrs.get("href") if tag == "link" and attrs.get("rel") == "stylesheet" else None
             if link:
                 parsed = urlsplit(link)

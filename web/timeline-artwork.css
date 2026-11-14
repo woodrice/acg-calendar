@@ -1,0 +1,74 @@
+/* Optional web presentation. Dates, event identity and provider data stay unchanged. */
+.timeline-style-control select{max-width:150px;font-size:11px;padding:3px 8px;min-height:30px}
+.timeline-style-control[hidden]{display:none}
+.timeline-artwork{--artwork-label-width:260px;position:relative;background:var(--paper)}
+.timeline-artwork .timeline-head,.timeline-artwork .timeline-row{grid-template-columns:var(--artwork-label-width) minmax(0,1fr)}
+.timeline-artwork .timeline-head{min-height:54px;z-index:7;background:var(--paper)!important}
+.timeline-artwork .timeline-head .timeline-label{background:var(--paper)!important}
+.timeline-artwork .timeline-head>:nth-child(n+3),.timeline-artwork .timeline-row>:nth-child(n+3){display:none}
+.timeline-artwork .timeline-row{min-height:102px;border-bottom:0;background:var(--paper)!important}
+.timeline-artwork .timeline-group{padding:10px 18px;background:var(--paper)!important;border:0;font-size:11px;letter-spacing:1px}
+.timeline-artwork .event-name-cell{background:var(--paper);border:0;z-index:4}
+.timeline-artwork .event-name{min-height:102px;padding:14px 46px 14px 18px;gap:12px;border:0;background:var(--paper)!important}
+.timeline-artwork .event-name strong{font-size:calc(15px * var(--ui-scale,1));line-height:1.5;overflow-wrap:anywhere}
+.timeline-artwork .event-name small{font-size:calc(11px * var(--ui-scale,1))!important;line-height:1.6}
+.timeline-artwork .event-avatar{display:grid;width:44px;height:44px;flex:0 0 44px;border-radius:10px;background:var(--panel-alt)}
+.timeline-artwork .event-name .game-icon{width:100%;height:100%;border:0;border-radius:inherit}
+.timeline-artwork .event-row-tools{right:6px;top:18px;gap:4px}
+.timeline-artwork .bar-cell{min-height:102px;border:0;background:repeating-linear-gradient(to right,color-mix(in srgb,var(--line) 30%,transparent) 0,color-mix(in srgb,var(--line) 30%,transparent) 1px,transparent 1px,transparent calc(100% / var(--days)))!important}
+.timeline-artwork .timeline-row .event-bar{--artwork-strip-height:76px;top:13px;height:var(--artwork-strip-height);max-height:calc(100% - 26px);padding:0;border:0;border-left:4px solid var(--event-accent);border-radius:10px;background:color-mix(in srgb,var(--event-accent) 9%,var(--paper))!important;container-type:inline-size}
+.timeline-artwork .event-bar.has-art{border-left:0;background:color-mix(in srgb,var(--event-accent) 9%,var(--paper))!important}
+/* Scale from the shared ruler width, never the strip height. The strip only clips the image. */
+.timeline-artwork .event-bar .bar-art{inset:33.3333% auto auto 0;width:var(--artwork-crop-width,100%);max-width:none;height:auto;max-height:none;transform:translateY(-33.3333%);opacity:1;mask-image:linear-gradient(to right,#000 var(--artwork-fade-start,66.6667%),transparent var(--artwork-fade-end,100%));-webkit-mask-image:linear-gradient(to right,#000 var(--artwork-fade-start,66.6667%),transparent var(--artwork-fade-end,100%));z-index:0}
+/* Prefer event width, native resolution and aspect ratio. Cover the strip even on short
+   events; allow a larger illustration on long events without forcing the fixed ruler size. */
+.timeline-artwork.artwork-adaptive .bar-art{
+  width:max(calc(var(--artwork-strip-height) * var(--artwork-image-ratio,1.777778)),min(100%,var(--artwork-crop-width,100%),var(--artwork-source-width,100000px),calc(var(--artwork-strip-height) * var(--artwork-image-ratio,1.777778) * 4)));
+  mask-image:linear-gradient(to right,#000 min(66.6667%,66.6667cqw),transparent min(100%,100cqw));
+  -webkit-mask-image:linear-gradient(to right,#000 min(66.6667%,66.6667cqw),transparent min(100%,100cqw));
+}
+.timeline-artwork .event-bar::before{display:none}
+.timeline-artwork .event-bar.has-art::after{display:none}
+.timeline-artwork .event-bar .bar-label{display:none}
+.timeline-artwork .bar-artwork-title{position:absolute;left:15px;right:185px;top:50%;transform:translateY(-50%);z-index:2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:800 calc(15px * var(--ui-scale,1))/1.4 "Segoe UI","Microsoft YaHei",sans-serif;color:var(--ink)}
+.timeline-artwork .has-art .bar-artwork-title{display:none}
+.timeline-artwork .bar-artwork-meta{position:absolute;right:10px;top:0;bottom:0;display:flex;justify-content:center;align-items:flex-end;flex-direction:column;gap:4px;max-width:calc(100% - 16px);z-index:2;pointer-events:none}
+.timeline-artwork .bar-time-tag,.timeline-artwork .bar-reward-tag{display:inline-flex;align-items:center;gap:4px;padding:5px 9px;max-width:100%;border-radius:8px;background:var(--paper);color:var(--ink);white-space:nowrap;font:600 calc(11px * var(--ui-scale,1))/1.25 "Segoe UI","Microsoft YaHei",sans-serif}
+.timeline-artwork .has-art .bar-time-tag,.timeline-artwork .has-art .bar-reward-tag{background:#fffffff2;color:#171b20}
+.timeline-artwork .bar-reward-tag{padding:2px 7px}
+.timeline-artwork .bar-reward-tag .reward-badge{color:inherit;font-size:11px;flex-wrap:nowrap}
+.timeline-artwork .bar-reward-tag .reward-icon{width:20px;height:20px}
+.timeline-artwork .bar-reward-tag small{width:auto;margin-left:4px;color:inherit;font-size:9px}
+.timeline-artwork .bar-reward-tag .reward-unlisted{font-size:10px;color:inherit}
+.timeline-artwork .event-bar.open-end:not(.has-art){background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--event-accent) 13%,var(--paper)) 0,color-mix(in srgb,var(--event-accent) 13%,var(--paper)) 4px,var(--paper) 4px,var(--paper) 8px)!important}
+.timeline-artwork .axis-day.today,.timeline-artwork .axis-day.today strong{background:transparent!important;color:var(--ink)!important;font-weight:900}
+.timeline-artwork .axis-day{border-color:transparent;background:var(--paper)!important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px 0!important}
+.timeline-artwork .axis-day .density-day{border:0;border-radius:0;background:transparent;box-shadow:none;min-height:0;height:auto;padding:0;color:var(--muted);font:10px/1.2 "Segoe UI","Microsoft YaHei",sans-serif}
+.timeline-artwork .axis-day .density-day:hover{color:var(--ink);text-decoration:underline}
+.timeline-artwork .axis-day .density-day:focus-visible{outline:2px solid var(--link);outline-offset:3px}
+.timeline-artwork .today-column,.timeline-artwork .bar-cell>.now-line{display:none}
+.artwork-now-track{position:absolute;top:54px;bottom:0;left:var(--artwork-label-width);right:0;z-index:5;pointer-events:none}
+.artwork-now-line{position:absolute;top:0;bottom:0;left:var(--now-left);border-left:3px solid var(--green);filter:drop-shadow(0 0 2px color-mix(in srgb,var(--green) 45%,transparent));pointer-events:none}
+.artwork-now-line[hidden]{display:none}
+.timeline-artwork .personal-plan-bar{top:24px;min-height:48px}
+.timeline-artwork .personal-plan-row>.event-name{padding-right:16px}
+.timeline-artwork .plan-create-row .bar-cell{min-height:102px}
+@container (max-width:280px){.bar-artwork-title{display:none!important}}
+@container (max-width:130px){.bar-artwork-meta{display:none!important}}
+@media(min-width:1500px){.timeline-artwork{--artwork-label-width:300px}}
+@media(max-width:1100px){.timeline-artwork{--artwork-label-width:224px}}
+@media(max-width:850px){
+  .view-controls:has(#timeline-style){flex-wrap:wrap;row-gap:6px}
+  .timeline-artwork{--artwork-label-width:180px}
+  .timeline-artwork .event-name{padding-left:10px;padding-right:34px;gap:8px}
+  .timeline-artwork .event-name strong{font-size:calc(12px * var(--ui-scale,1))}
+  .timeline-artwork .event-avatar{width:34px;height:34px;flex-basis:34px;border-radius:8px}
+  .timeline-artwork .event-row-tools{right:2px}
+}
+@media(pointer:coarse){
+  .timeline-style-control select{min-height:44px}
+  .timeline-artwork .event-name{padding-right:10px;min-height:76px}
+  .timeline-artwork .event-row-tools{position:static;padding:0 8px 8px;gap:4px}
+  .timeline-artwork .timeline-row,.timeline-artwork .bar-cell{min-height:130px}
+  .timeline-artwork .timeline-row .event-bar{--artwork-strip-height:88px;top:21px;height:var(--artwork-strip-height)}
+}

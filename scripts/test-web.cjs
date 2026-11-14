@@ -1,6 +1,6 @@
 // Run only owned, offline fixtures. Never attach to CALENDAR_TEST_URL or scan data/.
 const fs=require('node:fs'),path=require('node:path'),{spawn}=require('node:child_process');
-const tests=['e2e-web-journey.cjs','e2e-security.cjs','e2e-planner.cjs','e2e-plan-drawing.cjs','e2e-uiux.cjs','e2e-accessibility.cjs','e2e-stale-poll.cjs','e2e-focus-queue.cjs','e2e-timeline-motion.cjs','e2e-month-density.cjs','e2e-shell-source.cjs','e2e-android-shell.cjs','e2e-android-shell-touch.cjs'];
+const tests=['e2e-web-journey.cjs','e2e-security.cjs','e2e-planner.cjs','e2e-plan-drawing.cjs','e2e-uiux.cjs','e2e-accessibility.cjs','e2e-stale-poll.cjs','e2e-focus-queue.cjs','e2e-timeline-motion.cjs','e2e-month-density.cjs','e2e-shell-source.cjs','e2e-android-shell.cjs','e2e-android-shell-touch.cjs','e2e-artwork-timeline.cjs','e2e-arknights-official.cjs'];
 const env={...process.env,PLAYWRIGHT_MODULE:process.env.PLAYWRIGHT_MODULE||path.dirname(require.resolve('playwright/package.json'))};
 delete env.CALENDAR_TEST_URL;
 const results=[];

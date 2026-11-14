@@ -604,7 +604,7 @@ def handler_for(application, session=None):
                 assets.update({'/planner.js':'planner.js', '/planner.css':'planner.css', '/plan-drawing.js':'plan-drawing.js'})
                 assets['/journey.js'] = 'journey.js'
                 assets.update({'/navigation.js':'navigation.js', '/ux.css':'ux.css'})
-                assets.update({'/motion.js':'motion.js', '/motion.css':'motion.css', '/touch.css':'touch.css'})
+                assets.update({'/motion.js':'motion.js', '/motion.css':'motion.css', '/touch.css':'touch.css', '/timeline-artwork.css':'timeline-artwork.css', '/disclaimer.html':'disclaimer.html'})
                 assets['/timeline-order.js'] = 'timeline-order.js'
                 assets.update({'/shell-source.js': 'shell-source.js', '/shell/shell.js': 'shell/shell.js', '/shell/shell.css': 'shell/shell.css'})
                 if path not in assets:

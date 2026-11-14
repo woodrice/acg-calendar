@@ -56,7 +56,7 @@ public sealed partial class CalendarWindow
         clock.FontSize = 10; clock.Foreground = Muted; clock.Margin = new Thickness(0, 4, 0, 0); brand.Children.Add(clock);
         brand.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) ToggleMode(); else DragMove(); };
         title.Children.Add(brand); titleArea.Children.Add(title);
-        var officialTimeNotice = officialNotice = Text("具体活动情况请参考游戏官方时间", 10); officialTimeNotice.Foreground = Muted; officialTimeNotice.TextAlignment = TextAlignment.Right; officialTimeNotice.Margin = new Thickness(0, 7, 0, 0);
+        var officialTimeNotice = officialNotice = Text("数据与提醒可能有误，具体活动情况请参考游戏官方时间", 10); officialTimeNotice.Foreground = Muted; officialTimeNotice.TextAlignment = TextAlignment.Right; officialTimeNotice.Margin = new Thickness(0, 7, 0, 0);
         titleArea.Children.Add(officialTimeNotice); layout.Children.Add(titleArea);
         var summary = new StackPanel { Margin = new Thickness(0, 0, 0, 12) }; summaryPanel = summary;
         subtitle.FontSize = 16; subtitle.FontWeight = FontWeights.SemiBold; subtitle.Text = "正在启动本地日历…"; summary.Children.Add(subtitle);
@@ -160,9 +160,18 @@ public sealed partial class CalendarWindow
         var bottom = new StackPanel { Margin = new Thickness(0, 9, 0, 0) };
         var feedback = Text("", 10); feedback.Foreground = Muted; feedback.MaxHeight = 62; feedback.Margin = new Thickness(0, 0, 0, 7);
         feedback.SetBinding(TextBlock.TextProperty, new Binding(nameof(TextBlock.Text)) { Source = status }); bottom.Children.Add(feedback);
+        bottom.Children.Add(SidebarButton("免责声明与使用边界", ShowDisclaimer));
         bottom.Children.Add(SidebarButton("收起到托盘", HideToTray)); Grid.SetRow(bottom, 3); sidebarPanel.Children.Add(bottom);
         layers.Children.Add(sidebarPanel);
     }
+
+    void ShowDisclaimer() => MessageBox.Show(this,
+        "游时是独立、非官方的本地时间规划工具，不代表任何游戏运营方或信息网站。\n\n" +
+        "活动日期、区服、时区换算、头图、奖励及参与条件可能因源站变更、网络、解析错误或缓存过期而遗漏、延迟或出错。同步成功不代表逐项人工核实。卡池、活动关卡与兑换商店可能有不同截止时间。重要时间请自行核对游戏内及游戏官方最新公告。\n\n" +
+        "提醒可能漏发、延迟或无法送达，勿作为避免错过活动或奖励的唯一依据；请设置必要的备用提醒并备份个人数据。\n\n" +
+        "在适用法律允许的范围内，软件按现状提供，不保证信息准确、完整、及时或提醒送达；开发者、维护者及贡献者不对因使用或无法使用本工具导致的错过活动、奖励未领取、游戏内资源损失、数据丢失及相关损失承担责任。本声明不排除或限制依法不得排除或限制的责任。\n\n" +
+        "源码继续适用 MIT License，第三方公告、商标、图片及 Wiki 内容归各自权利人，分别适用其许可。完整声明见软件目录 DISCLAIMER.md 或网页的“免责声明”入口。",
+        "游时 · 免责声明与使用边界", MessageBoxButton.OK, MessageBoxImage.Information);
 
     void BuildDesktopSettings()
     {

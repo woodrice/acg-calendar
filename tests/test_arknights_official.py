@@ -14,6 +14,7 @@ HTML = (ROOT / 'tests/fixtures/arknights-official-preview.html').read_text(encod
 CONFIG = rules()['official']
 INDEX = '<a href="/news/111">[活动预告]2026感谢庆典即将开启</a>'
 GACHA = '<title>【将雪投火】限时寻访即将开启 - 明日方舟</title><div>2026 // 10 / 24</div><p>活动时间：11月01日 12:00 - 11月15日 03:59</p>'
+GACHA_SHOP = (ROOT / 'tests/fixtures/arknights-official-gacha-shop.html').read_text(encoding='utf-8')
 
 
 def events():
@@ -41,6 +42,21 @@ class MemoryArtwork:
 
 
 class OfficialParserTests(unittest.TestCase):
+    def test_contract_exchange_deadline_does_not_extend_gacha(self):
+        for html in (GACHA_SHOP, GACHA_SHOP.replace('开启时间：11月', '开启时间：</p><p>11月')):
+            with self.subTest(split_label=html != GACHA_SHOP):
+                rows, _ = parse_article(html, '4916', CONFIG)
+                pool = named(rows, '将雪投火 · 寻访')
+                shop = named(rows, '将雪投火 · 奖励兑换')
+                self.assertEqual(len(rows), 2)
+                self.assertEqual(pool['end']['at'], '2026-11-14T19:59:00Z')
+                self.assertEqual(pool['end']['raw'], '11月15日 03:59')
+                self.assertEqual(shop['end']['at'], '2026-11-17T19:59:00Z')
+                self.assertEqual(shop['category'], 'exchange')
+                self.assertEqual(shop['official']['role'], 'exchange')
+                self.assertEqual(shop['parent_title'], '将雪投火')
+                self.assertEqual(pool['phases'], [])
+
     def test_phases_exchange_and_official_timezone(self):
         rows, notes = parse_article(HTML, '111', CONFIG)
         main = named(rows, '时间啊，向前！')
@@ -110,6 +126,36 @@ class OfficialParserTests(unittest.TestCase):
 
 
 class OfficialCollectorTests(TempStoreTest):
+    def test_corrects_cached_gacha_without_losing_identity_or_personal_state(self):
+        for dedicated_first in (False, True):
+            with self.subTest(dedicated_first=dedicated_first):
+                pool = copy.deepcopy(named(events(), '将雪投火 · 寻访'))
+                pool['id'] = 'existing-gacha-id'
+                pool['official']['cid'] = '4916'
+                pool['official']['cids'] = ['111', '4916']
+                pool['end'].update(at='2026-11-17T19:59:00Z', raw='11月18日 03:59')
+                self.store.save_version(make_version([pool], '2026-11-13T00:00:00Z'))
+                personal = {'starred': True, 'notes': '保留我的卡池备注'}
+                self.store.update_state(pool['id'], personal)
+                self.store.save_plan({'id': 'gacha-plan', 'title': '抽卡安排', 'event_ids': [pool['id']], 'start': '2026-11-14T18:00:00Z', 'end': '2026-11-14T19:00:00Z'})
+                preview = {'cid': '111', 'url': 'https://ak.hypergryph.com/news/111', 'title': '活动预告'}
+                dedicated = {'cid': '4916', 'url': 'https://ak.hypergryph.com/news/4916', 'title': '将雪投火寻访开启'}
+                responses = {'https://ak.hypergryph.com/news': INDEX,
+                             preview['url']: HTML, dedicated['url']: GACHA_SHOP}
+                with patch('acg_calendar.arknights.discover', return_value=[dedicated, preview] if dedicated_first else [preview, dedicated]):
+                    result = self.collector(responses).collect()
+                corrected = named(result['events'], '将雪投火 · 寻访')
+                self.assertEqual(corrected['id'], pool['id'])
+                self.assertEqual(corrected['end']['at'], '2026-11-14T19:59:00Z')
+                self.assertEqual(named(result['events'], '将雪投火 · 奖励兑换')['end']['at'], '2026-11-17T19:59:00Z')
+                self.assertEqual(sum(e['category'] == 'gacha' and '将雪投火' in e['title'] for e in result['events']), 1)
+                self.assertEqual(self.store.state()[pool['id']]['notes'], personal['notes'])
+                self.assertTrue(self.store.state()[pool['id']]['starred'])
+                self.assertEqual(self.store.plans()[0]['event_ids'], [pool['id']])
+                resolved = named(resolve_versions([result], self.store.state())[0]['events'], corrected['title'])
+                self.assertEqual(resolved['end']['at'], '2026-11-14T19:59:00Z')
+                self.assertFalse(resolved['has_overrides'])
+
     def collector(self, responses=None, cache=None):
         responses = responses or {'https://ak.hypergryph.com/news': INDEX, 'https://ak.hypergryph.com/news/111': HTML}
         self.calls = []

@@ -136,3 +136,8 @@ html[data-shell-ready="true"] body > :not(#pt-shell){display:none!important}
 .embedded-timeline .event-name-cell>.event-name{padding:7px 6px;gap:5px;min-height:52px}
 .embedded-timeline .event-name-cell .game-icon{width:28px;height:28px}
 .embedded-timeline .timeline-scroll::after{content:none}
+
+/* The legal notice stays reachable when focus mode hides the page header. */
+.focus-disclaimer{display:none}
+.calendar-focused .focus-disclaimer{display:inline-flex;align-items:center;min-height:30px}
+@media(pointer:coarse){.calendar-focused .focus-disclaimer{min-height:44px}}

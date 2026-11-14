@@ -62,7 +62,7 @@ tasks.register("stagePlaytime", Sync) {
     if (!tzdataDir) throw new GradleException("Set playtime.tzdata in android/local.properties to the tzdata package directory")
     into "$buildDir/playtime-assets/playtime"
     from(repo) {
-        include "app.py", "VERSION", "LICENSE", "NOTICE.md"
+        include "app.py", "VERSION", "LICENSE", "NOTICE.md", "DISCLAIMER.md"
         include "acg_calendar/**", "web/**", "rules/**", "samples/**", "plugins/**"
         exclude "**/__pycache__/**", "**/*.pyc"
     }

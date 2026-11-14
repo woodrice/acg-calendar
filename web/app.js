@@ -93,6 +93,9 @@
     get(key,fallback){try{const v=JSON.parse(localStorage.getItem('playtime.'+key));return v??fallback;}catch{return fallback;}},
     set(key,value){try{localStorage.setItem('playtime.'+key,JSON.stringify(value));}catch{}}
   };
+  const timelineStyles=['classic','artwork','artwork-fixed'];
+  const savedTimelineStyle=local.get('timeline.style.v1','classic');
+  S.timelineStyle=timelineStyles.includes(savedTimelineStyle)?savedTimelineStyle:'classic';
   // Phone view choice is kept per browser and screen class, so polling and the desktop
   // setting never override it; wide screens keep using settings.view.
   const NARROW_VIEW='view.v1.narrow',NARROW_VIEWS=['upcoming','timeline','month','list'];
@@ -130,9 +133,11 @@
   // Time-dependent values are written into existing nodes; the markup stays stable between polls.
   function syncTime(root=document) {
     for(const node of root.querySelectorAll('[data-countdown]')){const text=countdown(node.dataset.countdown);if(node.textContent!==text)node.textContent=text;}
+    const stamps=root.querySelectorAll('[data-artwork-stamp]');
+    if(stamps.length){const byId=new Map(allEvents().map(e=>[e.id,e]));for(const node of stamps){const event=byId.get(node.dataset.artworkStamp);if(event){const text=artworkStamp(event);if(node.textContent!==text)node.textContent=text;}}}
     const current=civil(now());
     for(const node of root.querySelectorAll('[data-progress]')){const [a,b]=node.dataset.progress.split(',').map(Number);node.style.setProperty('--progress',Math.max(0,Math.min(100,(current-a)/(b-a)*100))+'%');}
-    for(const node of root.querySelectorAll('[data-now-line]')){const [lo,days]=node.dataset.nowLine.split(',').map(Number);node.style.setProperty('--now-left',(current-lo)/days*100+'%');}
+    for(const node of root.querySelectorAll('[data-now-line]')){const [lo,days]=node.dataset.nowLine.split(',').map(Number);node.style.setProperty('--now-left',(current-lo)/days*100+'%');if(node.classList.contains('artwork-now-line'))node.hidden=current<lo||current>=lo+days;}
   }
   // Replace a region only when its markup changed; when it must be rebuilt, focus returns to
   // the control for the same activity or plan instead of falling back to <body>.
@@ -423,6 +428,8 @@
     $('#month-view').setAttribute('aria-pressed',S.view==='month');
     $('#list-view').setAttribute('aria-pressed',S.view==='list');
     $('.range-control').hidden=S.view!=='timeline'||S.fit;
+    $('.timeline-style-control').hidden=S.view!=='timeline';
+    $('#timeline-style').value=S.timelineStyle;
     $('#fit-version').textContent=S.fit?'恢复日期范围':'日期全览';
     $('#fit-version').setAttribute('aria-pressed',Boolean(S.fit));
     $('.date-navigation').classList.toggle('list-mode',['list','upcoming'].includes(S.view));
@@ -511,6 +518,10 @@
     const ids=new Set(events.map(e=>e.id)),next=(S.data.presentation.deadline_nodes||[]).filter(n=>ids.has(n.event_id)&&Date.parse(n.at)>now()).sort((a,b)=>Date.parse(a.at)-Date.parse(b.at))[0];
     patch($('#deadline-strip'),next?`<span>NEXT DEADLINE</span><strong>${esc(format(next.at))}</strong><span>${next.kind==='exchange'?'兑换关闭 · ':''}${esc(next.title)} · 还剩 ${countdownSlot(next.at)}</span><button class="text-button" type="button" data-event="${next.event_id}">查看活动 ↗</button>`:'<span>DEADLINES</span><span>当前筛选中没有已明确的未来截止时间。</span>');
   }
+  function artworkStamp(event) {
+    const future=Date.parse(event.start.at)>now(),endpoint=future?event.start:event.end;
+    return endpoint.at?`${endpoint.state==='estimated'?'预计 ':''}${format(endpoint.at)} ${future?'开放':'截止'}`:'截止待定';
+  }
   function bar(event,lo,hi,{month=false,top=0,embedded=false}={}) {
     const start=civil(event.start.at), isPoint=event.time_kind==='point';
     const end=isPoint?start+0.03:(event.end.at?civil(event.end.at):hi);
@@ -524,9 +535,15 @@
     if(isPoint&&!month) return `<button type="button" class="point-marker" style="--category:${cat.color};--bar-left:${left}%" data-event="${event.id}"${shortcuts} aria-label="${esc(tooltip)}" title="${hoverTitle}"></button>`;
     const label=month?(combined()?gameLabel(event)+' · ':'')+cleanTitle(event):(start<lo?'← ':'')+format(event.start.at,{dateOnly:true})+(event.start.state==='estimated'?' 预计':'')+(event.end.at?' → '+format(event.end.at,{dateOnly:true}):' → 待定')+(end>hi?' →':'');
     const image=month?'':artwork(event,'bar-art');
-    return `<button type="button" class="event-bar ${image?'has-art':''} ${!event.end.at&&!isPoint?'open-end':''} ${event.start.state==='estimated'?'estimated-start':''} ${end>hi?'clipped-end':''} ${event.completed?'completed':''}" style="--category:${cat.color};--event-accent:${accent(event)};--bar-left:${left}%;--bar-width:${width}%;--bar-top:${top}px" data-progress="${a},${b}" data-event="${event.id}"${shortcuts} aria-label="${esc(tooltip)}" title="${hoverTitle}">${image}<span class="bar-label">${esc(label)}</span></button>`;
+    const visual=!month&&!embedded&&S.timelineStyle!=='classic';
+    // Convert 2/3 of the shared date ruler to a percentage of this event's width.
+    const visibleArtShare=Math.min(1,(width/100)/(2/3));
+    const cropStyle=visual?`;--artwork-crop-width:${(2/3)/(width/100)*100}%;--artwork-fade-start:${visibleArtShare*2/3*100}%;--artwork-fade-end:${visibleArtShare*100}%`:'';
+    const visualContent=visual?`<span class="bar-artwork-title">${esc(cleanTitle(event))}</span><span class="bar-artwork-meta"><span class="bar-time-tag" data-artwork-stamp="${esc(event.id)}">${esc(artworkStamp(event))}</span>${W.game(event.game)?.currency?`<span class="bar-reward-tag">${rewardBadge(event)}</span>`:''}</span>`:'';
+    return `<button type="button" class="event-bar ${image?'has-art':''} ${!event.end.at&&!isPoint?'open-end':''} ${event.start.state==='estimated'?'estimated-start':''} ${end>hi?'clipped-end':''} ${event.completed?'completed':''}" style="--category:${cat.color};--event-accent:${accent(event)};--bar-left:${left}%;--bar-width:${width}%;--bar-top:${top}px${cropStyle}" data-progress="${a},${b}" data-event="${event.id}"${shortcuts} aria-label="${esc(tooltip)}" title="${hoverTitle}">${image}<span class="bar-label">${esc(label)}</span>${visualContent}</button>`;
   }
   function renderTimeline(events,lo,hi,{embedded=false,openPlans=false}={}) {
+    const visual=!embedded&&S.timelineStyle!=='classic';
     const plans=P.planBars(lo,hi,{interactive:!embedded||openPlans,embedded});
     const creation=embedded?'':P.creationRow(),fit=!embedded&&S.fit;
     if(!events.length&&!plans&&!creation) return embedded?'<p class="empty-state">这段日期没有符合当前筛选的活动。</p>':emptyCalendar();
@@ -552,7 +569,7 @@
     }).join('');
     const width=embedded?244+days*36:fit?Math.max(1000,456+days*10):Math.max(840,296+days*28);
     const rewardHeading=embedded?'':`<div class="timeline-reward-head">嵌晶玉<span>${combined()?'仅终末地':'活动总量'}</span></div>`;
-    return `<div class="timeline-scroll"><div class="timeline ${S.game==='arknights-cn'?'arknights-timeline':''} ${fit?'fit-version':''}" style="--days:${days};min-width:${width}px"><div class="timeline-head"><div class="timeline-label">活动 / 开放状态${embedded?'':' · 标题完整显示'}</div><div class="day-axis">${axis}</div><div class="timeline-deadline-head">截止 / 更新时刻<span>${esc(zone())}</span></div>${rewardHeading}</div>${creation}${plans}${rows}</div></div>`;
+    return `<div class="timeline-scroll"><div class="timeline ${S.game==='arknights-cn'?'arknights-timeline':''} ${fit?'fit-version':''} ${visual?'timeline-artwork':''} ${visual&&S.timelineStyle==='artwork'?'artwork-adaptive':''}" style="--days:${days};min-width:${width}px"><div class="timeline-head"><div class="timeline-label">活动 / 开放状态${embedded?'':' · 标题完整显示'}</div><div class="day-axis">${axis}</div><div class="timeline-deadline-head">截止 / 更新时刻<span>${esc(zone())}</span></div>${rewardHeading}</div>${creation}${plans}${rows}${visual?`<span class="artwork-now-track" aria-hidden="true"><span class="artwork-now-line" data-now-line="${lo},${days}" ${today<lo||today>=hi?'hidden':''}></span></span>`:''}</div></div>`;
   }
   function mountTimeline(el,{date,days=14,onOpenEvent,onDay,onOpenPlan}={}) {
     if(!(el instanceof HTMLElement)||el.classList.contains('embedded-timeline'))throw new Error('请为时间轴提供独立容器');
@@ -1077,6 +1094,7 @@
         await selectScope(target.value,target.value==='all'?S.data.games.map(g=>g.id):target.value==='selected'?W.selected():[target.value],true);break;
       case 'version-select':cancelLocation();S.dateIntent=(S.dateIntent||0)+1;S.explicitAnchor=null;S.version=target.value;S.anchor=Math.floor(civil(activeVersion().maintenance.start||now()));render();break;
       case 'timezone-select':await mutate('/api/settings',{timezone:target.value});if(W.view.focus.date)await mutate('/api/workspace',{view:{focus_timezone:zone()}},'PATCH');break;
+      case 'timeline-style':S.timelineStyle=timelineStyles.includes(target.value)?target.value:'classic';local.set('timeline.style.v1',S.timelineStyle);render();break;
       case 'range-select':cancelLocation();S.dateIntent=(S.dateIntent||0)+1;S.fit=false;S.days=Number(target.value);render();break;
       case 'hide-completed':await mutate('/api/settings',{hide_completed:target.checked});break;
       case 'include-pending':S.includePending=target.checked;render();break;
@@ -1149,6 +1167,14 @@
     }
   }
   $('#event-search').addEventListener('input',()=>{if(S.data) render();});
+  // Intrinsic metadata only: CSS adapts when the bar or viewport changes, without layout polling.
+  document.addEventListener('load',event=>{
+    const image=event.target;
+    if(image instanceof HTMLImageElement&&image.classList.contains('bar-art')&&image.naturalHeight){
+      image.parentElement?.style.setProperty('--artwork-image-ratio',image.naturalWidth/image.naturalHeight);
+      image.parentElement?.style.setProperty('--artwork-source-width',image.naturalWidth+'px');
+    }
+  },true);
   document.addEventListener('error',event=>{
     if(event.target instanceof HTMLImageElement&&event.target.classList.contains('activity-art')) {
       event.target.parentElement?.classList.remove('has-art','with-image');event.target.remove();
