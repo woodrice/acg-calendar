@@ -38,6 +38,10 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
     });
     for(const preset of ['light','dark','endfield','arknights','nikke','azurlane','zzz']){
       await page.locator('#workspace-button').click();await page.locator('#theme-preset').selectOption(preset);await page.locator('#save-theme').click();await page.waitForFunction(p=>document.documentElement.dataset.theme===p,preset);
+      // The theme marker changes before the browser finishes its style/paint cycle.
+      // Check final palette contrast, retaining the same 4.5 threshold and reduced-motion coverage.
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      await page.waitForFunction(()=>!document.getAnimations().some(a=>a instanceof CSSTransition&&a.playState==='running'));
       const sample=await contrast();observations.push({preset,contrast:sample});assert.ok(sample.every(s=>s.ratio>=4.5),preset+': low contrast '+JSON.stringify(sample));
     }
     const fontBefore=await page.locator('.axis-date').first().evaluate(n=>parseFloat(getComputedStyle(n).fontSize));
