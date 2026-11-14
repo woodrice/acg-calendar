@@ -64,7 +64,14 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
     for(let i=0;i<2;i++){assert.deepEqual(after[i].start,source[i].start);assert.deepEqual(after[i].end,source[i].end);}
     await page.locator('#plans-dialog [data-close]').click();await page.locator('#fit-version').click();await page.locator('.personal-plan-bar').waitFor();
     await page.screenshot({path:path.join(output,'plans-and-families.png')});
-    for(const width of [320,768,1440]){await page.setViewportSize({width,height:720});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Overflow '+width);if(width>850)assert.ok(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight+1),'Body scroll '+width);else assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(e=>{const s=getComputedStyle(e);return /(auto|scroll)/.test(s.overflowY)&&e.scrollHeight>e.clientHeight+2&&e.clientHeight>30&&!e.closest('dialog')}).map(e=>e.className)),[],'Nested scroll '+width);}
+    for(const width of [320,768,1440]){
+      await page.setViewportSize({width,height:720});
+      const layout=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:innerWidth,
+        overflow:[...document.querySelectorAll('body *')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.right>innerWidth+1&&!e.closest('dialog');}).slice(0,8).map(e=>({tag:e.tagName,id:e.id,class:e.className,right:e.getBoundingClientRect().right}))}));
+      assert.ok(layout.width<=layout.viewport+1,'Overflow '+width+' '+JSON.stringify(layout));
+      if(width>850)assert.ok(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight+1),'Body scroll '+width);
+      else assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(e=>{const s=getComputedStyle(e);return /(auto|scroll)/.test(s.overflowY)&&e.scrollHeight>e.clientHeight+2&&e.clientHeight>30&&!e.closest('dialog')}).map(e=>e.className)),[],'Nested scroll '+width);
+    }
     await page.setViewportSize({width:1440,height:1050});
     // External scope changes are adopted by an already open page.
     await request('/api/workspace','PATCH',{view:{scope:'single',selected_games:['arknights-cn']}});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
