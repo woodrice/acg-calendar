@@ -8,7 +8,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   await fs.mkdir(dir,{recursive:true});
   const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
   try{
-    for(let i=0;i<50;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===49)throw Error('Server failed');await new Promise(r=>setTimeout(r,200));}
+    for(let i=0;i<50;i++){try{if(await fetch(base+'/api/health').then(async r=>{await r.text();return r.ok;}))break;}catch{}if(i===49)throw Error('Server failed');await new Promise(r=>setTimeout(r,200));}
     browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:900},locale:'zh-CN'}),errors=[];
     page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base+'/?game=all');await page.locator('#calendar .event-name').first().waitFor();
@@ -60,7 +60,8 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
     assert.equal(calendar,304,'An unchanged poll should be answered 304: '+JSON.stringify(await page.evaluate(()=>window.__statuses)));
     await poll();assert.equal(await page.evaluate(()=>document.querySelector('#calendar').firstChild===window.__calendarNode),true,'An unchanged poll rebuilt the calendar');
     const token=(await (await fetch(base+'/api/state')).json()).csrf_token;
-    await fetch(base+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Calendar-Token':token},body:JSON.stringify({hide_completed:false})});
+    const changed=await fetch(base+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Calendar-Token':token},body:JSON.stringify({hide_completed:false})});
+    const changedBody=await changed.text();assert.equal(changed.status,200,changedBody);
     await poll();assert.equal(await page.evaluate(()=>window.__statuses.at(-1)),200);
     assert.equal(await page.locator('#hide-completed').isChecked(),false,'A change made in another window did not arrive');
     assert.deepEqual(errors,[]);console.log('PASS: a poll answered after a change does not overwrite it; unchanged polls answer 304 and keep the page; outside changes arrive');

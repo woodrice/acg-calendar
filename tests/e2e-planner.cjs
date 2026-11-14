@@ -8,7 +8,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   await fs.mkdir(dir,{recursive:true});await fs.cp('examples/plugins/sample-game',path.join(dir,'plugins/sample-game'),{recursive:true});
   const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
   try{
-    for(let i=0;i<50;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===49)throw Error('Server failed');await new Promise(r=>setTimeout(r,200));}
+    for(let i=0;i<50;i++){try{if(await fetch(base+'/api/health').then(async r=>{await r.text();return r.ok;}))break;}catch{}if(i===49)throw Error('Server failed');await new Promise(r=>setTimeout(r,200));}
     const state=async()=>await(await fetch(base+'/api/state')).json();let data=await state();
     const request=async(url,method,body)=>{const r=await fetch(base+url,{method,headers:{'Content-Type':'application/json','X-Calendar-Token':data.csrf_token},body:JSON.stringify(body)});assert.equal(r.status,200);return r.json();};
     const source=structuredClone(data.events.filter(e=>e.game==='sample-game'));

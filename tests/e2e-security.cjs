@@ -9,7 +9,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
   const port=await require('./free-port.cjs')(),base='http://127.0.0.1:'+port;
   const server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser;
   try{
-    for(let i=0;i<60;i++){if(await fetch(base+'/api/health').then(r=>r.ok,()=>false))break;if(i===59)throw Error('Server not ready');await new Promise(r=>setTimeout(r,150));}
+    for(let i=0;i<60;i++){if(await fetch(base+'/api/health').then(async r=>{await r.text();return r.ok;},()=>false))break;if(i===59)throw Error('Server not ready');await new Promise(r=>setTimeout(r,150));}
     browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});const page=await browser.newPage({viewport:{width:1440,height:950},reducedMotion:'reduce'}),errors=[],external=[];
     await page.clock.setFixedTime(new Date('2026-10-27T20:00:00Z'));page.on('pageerror',e=>errors.push(e.message));
     await page.route('**/*',route=>{if(new URL(route.request().url()).origin!==base){external.push(new URL(route.request().url()).host);return route.abort();}return route.continue();});

@@ -9,7 +9,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
   const port=await new Promise(resolve=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});
   const base='http://127.0.0.1:'+port,server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});let browser,page;
   try{
-    for(let i=0;i<60;i++){if(await fetch(base+'/api/health').then(r=>r.ok,()=>false))break;if(i===59)throw Error('Server did not start');await new Promise(r=>setTimeout(r,150));}
+    for(let i=0;i<60;i++){if(await fetch(base+'/api/health').then(async r=>{await r.text();return r.ok;},()=>false))break;if(i===59)throw Error('Server did not start');await new Promise(r=>setTimeout(r,150));}
     browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});page=await browser.newPage({viewport:{width:1440,height:950},timezoneId:'America/New_York',reducedMotion:'reduce'});
     await page.clock.setFixedTime(new Date('2026-10-27T16:00:00Z'));
     const errors=[];page.on('pageerror',e=>errors.push(e.message));const state=()=>fetch(base+'/api/state').then(r=>r.json());
