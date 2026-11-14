@@ -59,7 +59,9 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
     assert.equal(await p.evaluate(()=>matchMedia('(pointer:coarse)').matches),true);
     for(const id of ['#sync-button','#filter-button','#calendar-expand','#month-view'])assert.ok((await p.locator(id).boundingBox()).height>=44,id+' must be touch reachable');
     assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-    assert.ok(await p.locator('.upcoming-item').evaluateAll(nodes=>nodes.filter(n=>{const r=n.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}).length)>=3,'Touch mode with larger fonts must retain three readable upcoming entries');
+    const touchLayout=await p.locator('.upcoming-item').evaluateAll(nodes=>nodes.slice(0,5).map(n=>{const r=n.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,viewport:innerHeight,title:n.querySelector('strong')?.textContent};}));
+    await fs.writeFile(path.join(out,'touch-layout.json'),JSON.stringify(touchLayout,null,2));await p.screenshot({path:path.join(out,'touch-large-font.png')});
+    assert.ok(touchLayout.filter(r=>r.top>=0&&r.bottom<=r.viewport).length>=3,'Touch mode with larger fonts must retain three readable upcoming entries: '+JSON.stringify(touchLayout));
     await p.locator('#filter-button').tap();await p.locator('#sidebar-more').tap();assert.equal(await p.locator('.sidebar.sidebar-expanded').count(),0);
     await p.screenshot({path:path.join(out,'touch-dpr2.png')});await p.setViewportSize({width:720,height:450});await p.screenshot({path:path.join(out,'zoom-equivalent-200.png')});assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await touch.close();

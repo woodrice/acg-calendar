@@ -60,6 +60,8 @@ jobs:
       - run: npm run check:js
       - if: runner.os == 'Linux'
         run: npx playwright install --with-deps chromium
+      - if: runner.os == 'Linux'
+        run: sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - if: runner.os == 'Windows'
         run: npx playwright install msedge
       - run: npm run test:web
@@ -74,6 +76,8 @@ jobs:
             logs/web-regression-summary.json
             logs/web-journey/*.png
             logs/*-e2e/*.png
+            logs/uiux-accessibility/**/*.png
+            logs/uiux-accessibility/**/touch-layout.json
           if-no-files-found: ignore
           retention-days: 7
 
@@ -107,7 +111,14 @@ jobs:
       - name: Verify Gradle wrapper
         run: python -c "import hashlib,pathlib; assert hashlib.sha256(pathlib.Path('android/gradle/wrapper/gradle-wrapper.jar').read_bytes()).hexdigest() == '498495120a03b9a6ab5d155f5de3c8f0d986a449153702fb80fc80e134484f17'"
       - run: python -m pip install --require-hashes --target "$RUNNER_TEMP/playtime-tzdata" -r requirements-build.txt
-      - run: sdkmanager "platforms;android-35" "build-tools;34.0.0"
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager"
+          "$sdkmanager" "platforms;android-35" "build-tools;34.0.0"
       - run: bash gradlew --no-daemon assembleArm64Debug assembleX86_64Debug lintArm64Debug
         working-directory: android
         env:

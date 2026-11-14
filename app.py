@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sys
 import threading
 import time
 import urllib.parse
@@ -755,6 +756,11 @@ def handler_for(application, session=None):
 
 
 def main():
+    # Redirected Windows streams may use ASCII/CP1252. An informational Chinese
+    # banner must never prevent the loopback server from starting.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--data-dir", type=Path, default=ROOT / "data")

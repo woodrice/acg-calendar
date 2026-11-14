@@ -14,6 +14,7 @@
 - 安卓运行时在所有文件复制成功后才写入完成标记，增加中断/重试测试；显式排除系统云备份与设备迁移中的应用数据。本版新构建不沿用旧包的真机验收结论。
 - CI 增加跨 Python/系统后端矩阵、离线网页回归、Android 构建和 lint；固定 Action 提交、最小权限、依赖锁与 Gradle 校验，加入定期依赖检查。新增打包前网页资源完整性检查，避免未提交模块漏入发布包。
 - 整理 README、[本机 API](docs/local-api.md)、[安全边界](SECURITY.md) 与[审计记录](docs/security-compatibility-audit-2026-11-13.md)。远端 CI 与附件状态以对应发布页及 Actions 为准。
+- 发布矩阵实测后修复 Windows 重定向输出编码导致的启动中断，并补启动回归；Android CI 改为明确定位 SDK 工具。
 
 ## V0.2.7 — 2026-11-06
 
