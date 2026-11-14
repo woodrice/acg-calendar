@@ -6,7 +6,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
   const base='http://127.0.0.1:'+port,server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});
   let browser;
   try{
-    for(let i=0;i<60;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===59)throw Error('QA server did not start');await new Promise(r=>setTimeout(r,150));}
+    for(let i=0;i<60;i++){try{if(await fetch(base+'/api/health').then(async r=>{await r.text();return r.ok;}))break;}catch{}if(i===59)throw Error('QA server did not start');await new Promise(r=>setTimeout(r,150));}
     const state=async()=>await(await fetch(base+'/api/state')).json();
     const request=async(url,body,method='POST')=>{const s=await state(),r=await fetch(base+url,{method,headers:{'content-type':'application/json','X-Calendar-Token':s.csrf_token},body:JSON.stringify(body)});assert.equal(r.ok,true,await r.text());};
     await request('/api/settings',{ui_motion:'standard',hide_completed:true});

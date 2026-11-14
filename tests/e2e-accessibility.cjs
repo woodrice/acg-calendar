@@ -8,7 +8,7 @@ const {spawn}=require('node:child_process'),{chromium}=require(process.env.PLAYW
   const base='http://127.0.0.1:'+port,server=spawn(process.env.CALENDAR_PYTHON||'python',['app.py','--port',String(port),'--data-dir',dir,'--no-sync','--no-desktop'],{windowsHide:true,stdio:'ignore'});
   let browser,page;const errors=[],observations=[];
   try{
-    for(let i=0;i<70;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{}if(i===69)throw Error('Server did not start');await new Promise(r=>setTimeout(r,150));}
+    for(let i=0;i<70;i++){try{if(await fetch(base+'/api/health').then(async r=>{await r.text();return r.ok;}))break;}catch{}if(i===69)throw Error('Server did not start');await new Promise(r=>setTimeout(r,150));}
     browser=await chromium.launch({channel:process.env.CALENDAR_BROWSER||'msedge',headless:true});
     page=await browser.newPage({viewport:{width:1440,height:900},locale:'zh-CN',timezoneId:'America/New_York'});page.on('pageerror',e=>errors.push(e.message));
     await page.emulateMedia({reducedMotion:'reduce'});

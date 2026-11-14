@@ -15,6 +15,7 @@ def tzdataDir = localProps.getProperty("playtime.tzdata") ?: System.getenv("PLAY
 android {
     namespace "io.github.zhenyufu039.playtime"
     compileSdk 35
+    buildToolsVersion "36.0.0"
 
     defaultConfig {
         applicationId "io.github.zhenyufu039.playtime"

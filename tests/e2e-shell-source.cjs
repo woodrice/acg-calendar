@@ -22,7 +22,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   let browser;
   try {
     for (let attempt = 0; attempt < 60; attempt++) {
-      if (await fetch(base + '/api/health').then(response => response.ok, () => false)) break;
+      if (await fetch(base + '/api/health').then(async response => { await response.text(); return response.ok; }, () => false)) break;
       if (attempt === 59) throw new Error('Test server did not start');
       await new Promise(resolve => setTimeout(resolve, 150));
     }
