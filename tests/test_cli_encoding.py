@@ -1,11 +1,10 @@
 """Startup must not depend on the encoding of a redirected Windows terminal."""
 import os
+import http.client
 import socket
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 
 from test_calendar import TempStoreTest
 
@@ -22,20 +21,26 @@ class CliEncodingTests(TempStoreTest):
         )
         try:
             ready = False
-            for _ in range(60):
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
                 if process.poll() is not None:
                     break
+                connection = http.client.HTTPConnection("127.0.0.1", port, timeout=.5)
                 try:
-                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=.3) as response:
-                        ready = response.status == 200
+                    connection.request("GET", "/api/health")
+                    response = connection.getresponse()
+                    ready = response.status == 200
+                    response.read()
                     if ready:
                         break
-                except (urllib.error.URLError, TimeoutError):
+                except (OSError, http.client.HTTPException):
                     time.sleep(.1)
-            self.assertTrue(ready, "Server failed to start with ASCII redirected output")
+                finally:
+                    connection.close()
         finally:
             if process.poll() is None:
                 process.terminate()
             stdout, stderr = process.communicate(timeout=10)
+        self.assertTrue(ready, f"Server failed with ASCII output; exit={process.returncode}; stderr={stderr.decode('ascii', 'backslashreplace')[-2000:]}")
         self.assertIn(b"Local: http://127.0.0.1:", stdout)
         self.assertNotIn(b"UnicodeEncodeError", stderr)
